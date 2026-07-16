@@ -23,6 +23,8 @@
     WALK_IN: "Walk-In",
     APARTMENT: "Apartment"
   };
+  var BREAKFAST_PRICE_AED = 150;
+  var APARTMENT_PRICE_AED = 120;
   var STORAGE_KEYS = {
     SNAPSHOT: "breakfast-checkin-state"
   };
@@ -145,7 +147,7 @@
       return "Walk-In";
     }
     if (guestType === GUEST_TYPES.APARTMENT) {
-      return "Apartment (20% discount)";
+      return "Apartment (120 AED \u2014 20% discount)";
     }
     if (breakfastStatus === BREAKFAST_STATUS.PAYMENT) {
       return "Payment Required";
@@ -169,7 +171,8 @@
     discount = "",
     entitlementExceeded = false,
     extraGuests = 0,
-    breakfastQuantity = 0
+    breakfastQuantity = 0,
+    statusOverride = false
   }) {
     const timestamp = toTimestamp();
     return {
@@ -190,7 +193,10 @@
       discount,
       entitlementExceeded,
       extraGuests,
-      breakfastQuantity
+      breakfastQuantity,
+      statusOverride: Boolean(statusOverride),
+      paid: false,
+      paidAt: ""
     };
   }
   function detectDuplicate(checkIns, guest) {
@@ -220,6 +226,7 @@
     const breakfastQuantity = parseInteger(guest.breakfastQuantity, 0);
     const extraGuests = getExtraGuests(guest, actualGuests);
     const entitlementExceeded = extraGuests > 0;
+    const products = Array.isArray(guest.products) ? guest.products.join(", ") : String(guest.products || "-");
     return buildBaseRecord({
       roomNumber: guest.roomNumber,
       guestName: guest.fullName,
@@ -227,14 +234,15 @@
       children: guest.children,
       tableNumber: normalizeText(formValues.tableNumber),
       mealPlan: guest.mealPlan,
-      products: guest.products.join(", "),
+      products,
       breakfastStatus: guest.breakfastStatus,
       guestType: GUEST_TYPES.HOTEL,
       actualGuests,
       confirmationNumber: guest.confirmationNumber,
       entitlementExceeded,
       extraGuests,
-      breakfastQuantity
+      breakfastQuantity,
+      statusOverride: Boolean(guest.statusOverride)
     });
   }
   function createWalkInCheckIn(formValues) {
@@ -266,6 +274,31 @@
       discount: "20%"
     });
   }
+  function createManualGuest(formValues) {
+    const adults = parseInteger(formValues.adults, 1);
+    const children = parseInteger(formValues.children, 0);
+    const breakfastStatus = normalizeText(formValues.breakfastStatus) || BREAKFAST_STATUS.INCLUDED;
+    const breakfastQuantity = breakfastStatus === BREAKFAST_STATUS.INCLUDED ? parseInteger(formValues.breakfastQuantity, adults + children) : 0;
+    return {
+      id: createId("guest"),
+      roomNumber: normalizeRoom(formValues.roomNumber),
+      fullName: normalizeText(formValues.guestName) || "Hotel Guest",
+      adults,
+      children,
+      mealPlan: normalizeText(formValues.mealPlan) || "FO Correction",
+      products: ["FO Override"],
+      productDescriptions: ["Manual entry \u2014 Front Office correction"],
+      breakfastStatus,
+      breakfastQuantity,
+      confirmationNumber: normalizeText(formValues.confirmationNumber),
+      arrival: "",
+      departure: "",
+      reservationStatus: "Manual",
+      rateCode: "",
+      guestType: GUEST_TYPES.HOTEL,
+      statusOverride: true
+    };
+  }
 
   // js/export.js
   function ensureXlsx() {
@@ -292,7 +325,8 @@
       "Meal Plan": record.mealPlan,
       Package: record.products,
       "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
-      "Guest Type": record.guestType
+      "Guest Type": record.guestType,
+      "FO Override": record.statusOverride ? "Yes" : "No"
     }));
     writeWorkbook(rows, `breakfast-report-${todayKey()}.xlsx`, "Breakfast Report");
   }
@@ -304,7 +338,12 @@
       Table: record.tableNumber,
       "Guest Type": record.guestType,
       Reason: record.reason,
-      "Extra Guests": record.extraGuests || ""
+      "Extra Guests": record.extraGuests || "",
+      "Guests Charged": record.chargeableGuests ?? "",
+      "Unit Price (AED)": record.unitPriceAed ?? "",
+      "Amount (AED)": record.amountAed ?? "",
+      Paid: record.paid ? "Yes" : "No",
+      "Paid At": record.paidAt ? new Date(record.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""
     }));
     writeWorkbook(rows, `breakfast-accounting-${todayKey()}.xlsx`, "Accounting");
   }
@@ -449,7 +488,18 @@
     }
     return reasonLabel(record.guestType, record.breakfastStatus);
   }
+  function chargeableGuests(record) {
+    if (record.entitlementExceeded) {
+      return Number(record.extraGuests) || 0;
+    }
+    return Number(record.actualGuests) || 0;
+  }
+  function unitPriceAed(record) {
+    return record.guestType === GUEST_TYPES.APARTMENT ? APARTMENT_PRICE_AED : BREAKFAST_PRICE_AED;
+  }
   function createPaymentRecord(checkInRecord) {
+    const qty = chargeableGuests(checkInRecord);
+    const unitPrice = unitPriceAed(checkInRecord);
     return {
       id: checkInRecord.id,
       timestamp: checkInRecord.timestamp,
@@ -459,11 +509,29 @@
       guestType: checkInRecord.guestType,
       reason: paymentReason(checkInRecord),
       extraGuests: checkInRecord.extraGuests || 0,
-      entitlementExceeded: Boolean(checkInRecord.entitlementExceeded)
+      entitlementExceeded: Boolean(checkInRecord.entitlementExceeded),
+      chargeableGuests: qty,
+      unitPriceAed: unitPrice,
+      amountAed: qty * unitPrice,
+      paid: Boolean(checkInRecord.paid),
+      paidAt: checkInRecord.paidAt || ""
     };
   }
   function syncPaymentList(checkIns) {
-    return checkIns.filter(requiresPayment).map((record) => createPaymentRecord(record));
+    return checkIns.filter(requiresPayment).map((record) => createPaymentRecord(record)).sort((a, b) => Number(a.paid) - Number(b.paid) || String(b.timestamp).localeCompare(String(a.timestamp)));
+  }
+  function markPaymentPaid(checkIns, paymentId) {
+    const paidAt = toTimestamp();
+    return checkIns.map((record) => {
+      if (record.id !== paymentId) {
+        return record;
+      }
+      return {
+        ...record,
+        paid: true,
+        paidAt
+      };
+    });
   }
 
   // js/search.js
@@ -509,8 +577,11 @@
     if (!results.length) {
       return `<div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-400">No matching guest found.</div>`;
     }
-    return results.map(
-      (guest, index) => `
+    return results.map((guest, index) => {
+      const mealPlan = guest.mealPlan && guest.mealPlan !== "-" ? guest.mealPlan : "";
+      const packages = Array.isArray(guest.products) ? guest.products.filter(Boolean).join(", ") : String(guest.products || "");
+      const mealPlanPackage = [mealPlan, packages].filter(Boolean).join(" \xB7 ") || "-";
+      return `
         <button
           class="search-result flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-left transition hover:bg-blue-50 active:scale-[0.99]"
           type="button"
@@ -519,12 +590,12 @@
           <span class="min-w-[4.5rem] text-2xl font-extrabold tracking-wide text-slate-900">${highlightMatch(guest.roomNumber, query)}</span>
           <span class="min-w-0 flex-1">
             <strong class="block truncate text-sm font-bold text-slate-800">${highlightMatch(guest.fullName, query)}</strong>
-            <span class="block truncate text-xs font-medium text-slate-400">${highlightMatch(guest.confirmationNumber, query)}</span>
+            <span class="block truncate text-xs font-medium text-slate-400">${escapeHtml(mealPlanPackage)}</span>
           </span>
           <i class="fa-solid fa-chevron-right text-slate-300"></i>
         </button>
-      `
-    ).join("");
+      `;
+    }).join("");
   }
 
   // js/ui.js
@@ -541,9 +612,9 @@
     }
     return statusMeta(status).label;
   }
-  function infoChip(icon, label, value) {
+  function infoChip(icon, label, value, wide = false) {
     return `
-    <div class="rounded-2xl bg-slate-50 px-3 py-2.5">
+    <div class="rounded-2xl bg-slate-50 px-3 py-2.5${wide ? " col-span-2" : ""}">
       <div class="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         <i class="fa-solid ${icon}"></i>
         <span>${escapeHtml(label)}</span>
@@ -555,7 +626,7 @@
   function guestPanelMarkup(guest) {
     if (!guest) {
       return `
-      <div class="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-3xl bg-slate-50 px-6 text-center">
+      <div class="empty-guest-panel flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-3xl bg-slate-50 px-6 text-center sm:min-h-[280px]">
         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-primary shadow-card">
           <i class="fa-solid fa-mug-saucer text-2xl"></i>
         </div>
@@ -567,12 +638,15 @@
     }
     const status = statusMeta(guest.breakfastStatus);
     const statusTone = guest.breakfastStatus === "included" ? "from-green-50 to-white border-green-100" : guest.breakfastStatus === "payment" ? "from-red-50 to-white border-red-100" : "from-yellow-50 to-white border-yellow-100";
+    const mealPlan = guest.mealPlan && guest.mealPlan !== "-" ? guest.mealPlan : "";
+    const packages = listToText(guest.products);
+    const mealPlanPackage = [mealPlan, packages !== "-" ? packages : ""].filter(Boolean).join(" \xB7 ") || "-";
     return `
     <div class="card-enter overflow-hidden rounded-3xl border bg-gradient-to-b ${statusTone}">
       <div class="flex items-start justify-between gap-3 p-4 pb-2">
         <div>
           <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Room</p>
-          <div class="text-5xl font-black tracking-tight text-slate-900">${escapeHtml(guest.roomNumber)}</div>
+          <div class="room-title text-slate-900">${escapeHtml(guest.roomNumber)}</div>
           <div class="mt-1 flex items-center gap-2 text-lg font-bold text-slate-700">
             <i class="fa-solid fa-user text-sm text-slate-400"></i>
             <span>${escapeHtml(guest.fullName || "-")}</span>
@@ -584,22 +658,29 @@
         </span>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 p-4 pt-2">
+      <div class="guest-detail-grid p-3 pt-1 sm:p-4 sm:pt-2">
         ${infoChip("fa-user-group", "Adults", String(guest.adults))}
         ${infoChip("fa-child", "Children", String(guest.children))}
-        ${infoChip("fa-utensils", "Meal Plan", guest.mealPlan || "-")}
-        ${infoChip("fa-box", "Package", listToText(guest.products))}
+        ${infoChip("fa-utensils", "Meal Plan / Package", mealPlanPackage, true)}
         ${infoChip("fa-calendar-check", "Arrival", formatDate(guest.arrival))}
         ${infoChip("fa-calendar-xmark", "Departure", formatDate(guest.departure))}
-        ${infoChip("fa-hashtag", "Confirmation", guest.confirmationNumber || "-")}
         ${infoChip("fa-mug-hot", "BF Qty", String(guest.breakfastQuantity))}
-        ${infoChip("fa-hotel", "Status", guest.reservationStatus || "-")}
-        ${infoChip("fa-tag", "Rate", guest.rateCode || "-")}
       </div>
 
-      <div class="border-t border-black/5 px-4 py-3 text-xs font-medium text-slate-500">
-        <i class="fa-solid fa-circle-info mr-1 text-slate-300"></i>
-        ${escapeHtml(listToText(guest.productDescriptions))}
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-black/5 px-4 py-3">
+        <p class="text-xs font-medium text-slate-500">
+          <i class="fa-solid fa-circle-info mr-1 text-slate-300"></i>
+          ${escapeHtml(listToText(guest.productDescriptions))}
+          ${guest.statusOverride ? '<span class="ml-1 font-bold text-amber-600">(FO Override)</span>' : ""}
+        </p>
+        <button
+          id="correctStatusButton"
+          class="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white transition active:scale-[0.97]"
+          type="button"
+        >
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span>Correct Status</span>
+        </button>
       </div>
     </div>
   `;
@@ -623,13 +704,40 @@
   `;
   }
   function paymentCardMarkup(record) {
+    const paid = Boolean(record.paid);
+    const amountLabel = `${Number(record.amountAed || 0)} AED`;
+    const unitLabel = `${Number(record.unitPriceAed || 0)} \xD7 ${Number(record.chargeableGuests || 0)}`;
+    if (paid) {
+      return `
+      <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-extrabold text-success">
+            <i class="fa-solid fa-circle-check"></i>
+            Paid
+          </span>
+        </div>
+        <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
+        <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
+        <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+          <span><i class="fa-solid fa-chair mr-1 text-success"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <span>${escapeHtml(record.guestType || "")}</span>
+        </div>
+        <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="text-sm font-extrabold text-success">${escapeHtml(amountLabel)}</span>
+          <span class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</span>
+        </div>
+      </article>
+    `;
+    }
     return `
-    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press">
+    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-extrabold text-danger">
           <i class="fa-solid fa-receipt"></i>
-          Pay
+          Unpaid
         </span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
@@ -639,6 +747,20 @@
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
+      <div class="mt-3 flex items-center justify-between gap-2">
+        <div>
+          <div class="text-lg font-black text-slate-900">${escapeHtml(amountLabel)}</div>
+          <div class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</div>
+        </div>
+        <button
+          class="pay-button inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-danger px-4 text-sm font-extrabold text-white transition active:scale-[0.97]"
+          type="button"
+          data-pay-id="${escapeHtml(record.id)}"
+        >
+          <i class="fa-solid fa-coins"></i>
+          Pay
+        </button>
+      </div>
     </article>
   `;
   }
@@ -667,6 +789,7 @@
         checkInButton: document.querySelector("#checkInButton"),
         walkInButton: document.querySelector("#walkInButton"),
         apartmentButton: document.querySelector("#apartmentButton"),
+        manualGuestButton: document.querySelector("#manualGuestButton"),
         newDayButton: document.querySelector("#newDayButton"),
         exportTodayButton: document.querySelector("#exportTodayButton"),
         exportAccountingButton: document.querySelector("#exportAccountingButton"),
@@ -701,23 +824,39 @@
     }
     setFileStatus(type, loaded, fileName = "") {
       const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+      const mobileElement = type === "mealPlan" ? document.querySelector("#mobileMealPlanStatus") : document.querySelector("#mobilePackageForecastStatus");
       const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
-      if (loaded) {
-        element.className = "file-status is-loaded inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-        element.textContent = `${label}: Loaded`;
+      const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
+      const desktopClass = loaded ? "file-status is-loaded inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold" : "file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
+      const mobileClass = loaded ? "file-status is-loaded rounded-xl px-3 py-2 text-center text-[11px] font-bold" : "file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold";
+      const text = loaded ? `${label}: Loaded` : `${label}: Missing`;
+      const mobileText = loaded ? `${shortLabel}: Loaded` : `${shortLabel}: Missing`;
+      if (element) {
+        element.className = desktopClass;
+        element.textContent = text;
         element.title = fileName;
-        return;
       }
-      element.className = "file-status is-missing inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-      element.textContent = `${label}: Missing`;
-      element.title = "";
+      if (mobileElement) {
+        mobileElement.className = mobileClass;
+        mobileElement.textContent = mobileText;
+        mobileElement.title = fileName;
+      }
     }
     setFileLoading(type, fileName = "") {
       const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+      const mobileElement = type === "mealPlan" ? document.querySelector("#mobileMealPlanStatus") : document.querySelector("#mobilePackageForecastStatus");
       const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
-      element.className = "file-status is-loading inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-      element.textContent = `${label}: Reading...`;
-      element.title = fileName;
+      const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
+      if (element) {
+        element.className = "file-status is-loading inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
+        element.textContent = `${label}: Reading...`;
+        element.title = fileName;
+      }
+      if (mobileElement) {
+        mobileElement.className = "file-status is-loading rounded-xl px-3 py-2 text-center text-[11px] font-bold";
+        mobileElement.textContent = `${shortLabel}: Reading...`;
+        mobileElement.title = fileName;
+      }
     }
     pushRecentRoom(guest) {
       if (!guest?.roomNumber) {
@@ -767,11 +906,12 @@
       this.elements.searchResults.innerHTML = "";
     }
     updateStatistics(checkIns = [], payments = []) {
+      const unpaid = payments.filter((record) => !record.paid);
       if (this.elements.statCheckIns) {
         this.elements.statCheckIns.textContent = String(checkIns.length);
       }
       if (this.elements.statPayments) {
-        this.elements.statPayments.textContent = String(payments.length);
+        this.elements.statPayments.textContent = String(unpaid.length);
       }
       if (this.elements.statIncluded) {
         this.elements.statIncluded.textContent = String(
@@ -807,7 +947,7 @@
       }
     }
     renderMessage(message, tone = "info") {
-      this.elements.messageArea.className = `message-banner mb-3 shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold ${tone}`;
+      this.elements.messageArea.className = `message-banner mb-2 shrink-0 rounded-2xl px-3 py-2 text-sm font-semibold sm:mb-3 sm:px-4 sm:py-3 ${tone}`;
       this.elements.messageArea.textContent = message;
       this.elements.messageArea.hidden = !message;
       if (tone === "success" && /checked in successfully/i.test(message || "")) {
@@ -823,6 +963,14 @@
     setExportState(hasCheckIns, hasPayments) {
       this.elements.exportTodayButton.disabled = !hasCheckIns;
       this.elements.exportAccountingButton.disabled = !hasPayments;
+      const mobileExportToday = document.querySelector("#mobileExportTodayButton");
+      const mobileExportAccounting = document.querySelector("#mobileExportAccountingButton");
+      if (mobileExportToday) {
+        mobileExportToday.disabled = !hasCheckIns;
+      }
+      if (mobileExportAccounting) {
+        mobileExportAccounting.disabled = !hasPayments;
+      }
     }
     activateTab(targetName) {
       this.elements.tabButtons.forEach((button) => {
@@ -830,6 +978,21 @@
       });
       this.elements.tabPanels.forEach((panel) => {
         panel.hidden = panel.dataset.tabPanel !== targetName;
+      });
+      this.setMobileView(targetName);
+    }
+    setMobileView(viewName) {
+      const workspace = document.querySelector(".main-workspace");
+      if (workspace) {
+        workspace.classList.remove("mobile-view-search", "mobile-view-checkin", "mobile-view-checkins", "mobile-view-payments");
+        workspace.classList.add(`mobile-view-${viewName}`);
+      }
+      document.querySelectorAll("[data-mobile-view]").forEach((button) => {
+        const isSearch = button.dataset.mobileView === "search";
+        const active = button.dataset.mobileView === viewName;
+        if (isSearch) {
+          button.classList.toggle("is-active", active);
+        }
       });
     }
     openModal({ title, body, actions = [] }) {
@@ -884,8 +1047,24 @@
       return new Promise((resolve) => {
         const body = `
         <form id="dynamicModalForm" class="modal-form">
-          ${fields.map(
-          (field) => `
+          ${fields.map((field) => {
+          if (field.type === "select") {
+            return `
+                  <label class="form-field">
+                    <span>${escapeHtml(field.label)}</span>
+                    <select name="${escapeHtml(field.name)}" ${field.required ? "required" : ""}>
+                      ${(field.options || []).map(
+              (option) => `
+                            <option value="${escapeHtml(option.value)}" ${String(option.value) === String(field.value || "") ? "selected" : ""}>
+                              ${escapeHtml(option.label)}
+                            </option>
+                          `
+            ).join("")}
+                    </select>
+                  </label>
+                `;
+          }
+          return `
                 <label class="form-field">
                   <span>${escapeHtml(field.label)}</span>
                   <input
@@ -896,8 +1075,8 @@
                     ${field.required ? "required" : ""}
                   />
                 </label>
-              `
-        ).join("")}
+              `;
+        }).join("")}
         </form>
       `;
         this.openModal({
@@ -927,8 +1106,8 @@
             }
           ]
         });
-        const firstInput = this.elements.modal.querySelector("input");
-        firstInput?.focus();
+        const firstField = this.elements.modal.querySelector("input, select");
+        firstField?.focus();
       });
     }
   };
@@ -938,9 +1117,20 @@
     KCA: "KCAadmin",
     KTB: "KTBadmin"
   };
+  var BRAND_LOGOS = {
+    KCA: "./assets/logos/kca.svg",
+    KTB: "./assets/logos/ktb.svg"
+  };
   var AUTH_KEY = "breakfast-auth-user";
+  function normalizeUsername(username) {
+    return String(username || "").trim().toUpperCase();
+  }
+  function getBrandLogo(username) {
+    const key = normalizeUsername(username);
+    return BRAND_LOGOS[key] || "";
+  }
   function login(username, password) {
-    const normalizedUsername = String(username || "").trim().toUpperCase();
+    const normalizedUsername = normalizeUsername(username);
     const expectedPassword = USERS[normalizedUsername];
     if (!expectedPassword || expectedPassword !== password) {
       return false;
@@ -1149,6 +1339,9 @@
     init() {
       this.bindEvents();
       this.refreshUi();
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        this.ui.setMobileView("search");
+      }
     }
     bindEvents() {
       const { elements } = this.ui;
@@ -1191,9 +1384,21 @@
       });
       elements.walkInButton.addEventListener("click", () => this.handleSpecialGuest("walkIn"));
       elements.apartmentButton.addEventListener("click", () => this.handleSpecialGuest("apartment"));
+      elements.manualGuestButton?.addEventListener("click", () => this.handleManualGuest());
       elements.newDayButton.addEventListener("click", () => this.handleNewDay());
       elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
       elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
+      elements.paymentTableBody?.addEventListener("click", (event) => {
+        const payButton = event.target.closest("[data-pay-id]");
+        if (payButton) {
+          this.handleMarkPaid(payButton.dataset.payId);
+        }
+      });
+      elements.guestPanel?.addEventListener("click", (event) => {
+        if (event.target.closest("#correctStatusButton")) {
+          this.handleCorrectStatus();
+        }
+      });
       document.querySelector("#modalCloseButton").addEventListener("click", () => {
         this.ui.closeModal();
         this.focusSearch();
@@ -1201,6 +1406,22 @@
       elements.tabButtons.forEach((button) => {
         button.addEventListener("click", () => this.ui.activateTab(button.dataset.tabTarget));
       });
+      document.querySelector("#mobileToolsToggle")?.addEventListener("click", () => {
+        const panel = document.querySelector("#mobileToolsPanel");
+        if (panel) {
+          panel.hidden = !panel.hidden;
+        }
+      });
+      document.querySelector('[data-mobile-view="search"]')?.addEventListener("click", () => {
+        this.ui.setMobileView("search");
+        this.focusSearch();
+      });
+      document.querySelector("#mobileNewDayButton")?.addEventListener("click", () => this.handleNewDay());
+      document.querySelector("#mobileLogoutButton")?.addEventListener("click", () => {
+        document.querySelector("#logoutButton")?.click();
+      });
+      document.querySelector("#mobileExportTodayButton")?.addEventListener("click", () => this.handleExportToday());
+      document.querySelector("#mobileExportAccountingButton")?.addEventListener("click", () => this.handleExportAccounting());
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !this.ui.elements.modal.hidden) {
           this.ui.closeModal();
@@ -1230,8 +1451,13 @@
       }));
       this.ui.renderCheckIns(checkInsForTable);
       this.ui.renderPayments(paymentForTable);
-      this.ui.setCheckInEnabled(this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast);
-      this.ui.setExportState(Boolean(this.state.checkIns.length), Boolean(this.state.paymentList.length));
+      const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
+      const manualReady = Boolean(this.selectedGuest?.statusOverride);
+      this.ui.setCheckInEnabled(filesReady || manualReady);
+      this.ui.setExportState(
+        Boolean(this.state.checkIns.length),
+        Boolean(this.state.paymentList.length)
+      );
       const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkin";
       this.ui.activateTab(activeTab);
     }
@@ -1326,6 +1552,7 @@
       this.selectedGuest = guest;
       this.ui.renderGuest(guest);
       this.ui.clearSearchResults();
+      this.ui.activateTab("checkin");
       this.ui.elements.tableNumberInput.focus();
     }
     async submitHotelCheckIn() {
@@ -1397,6 +1624,142 @@
       const record = type === "walkIn" ? createWalkInCheckIn(formValues) : createApartmentCheckIn(formValues);
       this.commitCheckIn(record, `${record.guestType} guest checked in successfully.`, "success");
     }
+    async handleManualGuest() {
+      const formValues = await this.ui.promptForm({
+        title: "Manual Guest (FO Correction)",
+        submitLabel: "Load Guest",
+        fields: [
+          { name: "roomNumber", label: "Room Number", required: true },
+          { name: "guestName", label: "Guest Name", required: true },
+          { name: "adults", label: "Adults", type: "number", min: 0, value: "1", required: true },
+          { name: "children", label: "Children", type: "number", min: 0, value: "0", required: true },
+          {
+            name: "breakfastStatus",
+            label: "Breakfast Status",
+            type: "select",
+            value: BREAKFAST_STATUS.INCLUDED,
+            required: true,
+            options: [
+              { value: BREAKFAST_STATUS.INCLUDED, label: "Breakfast Included" },
+              { value: BREAKFAST_STATUS.PAYMENT, label: "Payment Required (Room Only)" },
+              { value: BREAKFAST_STATUS.UNKNOWN, label: "Unknown Package" }
+            ]
+          },
+          { name: "breakfastQuantity", label: "Breakfast Qty", type: "number", min: 0, value: "2", required: true },
+          { name: "confirmationNumber", label: "Confirmation (optional)" },
+          { name: "mealPlan", label: "Meal Plan Note", value: "FO Correction" }
+        ]
+      });
+      if (!formValues) {
+        this.focusSearch();
+        return;
+      }
+      const guest = createManualGuest(formValues);
+      if (!guest.roomNumber) {
+        this.ui.renderMessage("Room number is required for manual guest.", "warning");
+        return;
+      }
+      const existingIndex = this.state.guests.findIndex(
+        (item) => normalizeRoom(item.roomNumber) === guest.roomNumber
+      );
+      if (existingIndex >= 0) {
+        this.state.guests[existingIndex] = {
+          ...this.state.guests[existingIndex],
+          ...guest,
+          id: this.state.guests[existingIndex].id,
+          statusOverride: true
+        };
+        this.selectGuest(this.state.guests[existingIndex]);
+      } else {
+        this.state.guests.push(guest);
+        this.selectGuest(guest);
+      }
+      this.persistState();
+      this.ui.renderMessage(`Manual guest ${guest.roomNumber} loaded. Review status then check in.`, "success");
+    }
+    async handleCorrectStatus() {
+      if (!this.selectedGuest) {
+        this.ui.renderMessage("Select a guest before correcting status.", "warning");
+        return;
+      }
+      const formValues = await this.ui.promptForm({
+        title: "Correct Breakfast Status (FO)",
+        submitLabel: "Apply Correction",
+        fields: [
+          {
+            name: "breakfastStatus",
+            label: "Breakfast Status",
+            type: "select",
+            value: this.selectedGuest.breakfastStatus,
+            required: true,
+            options: [
+              { value: BREAKFAST_STATUS.INCLUDED, label: "Breakfast Included" },
+              { value: BREAKFAST_STATUS.PAYMENT, label: "Payment Required (Room Only)" },
+              { value: BREAKFAST_STATUS.UNKNOWN, label: "Unknown Package" }
+            ]
+          },
+          {
+            name: "breakfastQuantity",
+            label: "Breakfast Qty",
+            type: "number",
+            min: 0,
+            value: String(this.selectedGuest.breakfastQuantity || 0),
+            required: true
+          },
+          {
+            name: "mealPlan",
+            label: "Meal Plan Note",
+            value: this.selectedGuest.mealPlan || ""
+          }
+        ]
+      });
+      if (!formValues) {
+        return;
+      }
+      const breakfastStatus = formValues.breakfastStatus || BREAKFAST_STATUS.UNKNOWN;
+      const breakfastQuantity = breakfastStatus === BREAKFAST_STATUS.INCLUDED ? parseInteger(formValues.breakfastQuantity, 0) : parseInteger(formValues.breakfastQuantity, 0);
+      this.selectedGuest = {
+        ...this.selectedGuest,
+        breakfastStatus,
+        breakfastQuantity,
+        mealPlan: formValues.mealPlan || this.selectedGuest.mealPlan,
+        statusOverride: true
+      };
+      const guestIndex = this.state.guests.findIndex(
+        (guest) => guest.id === this.selectedGuest.id || normalizeRoom(guest.roomNumber) === normalizeRoom(this.selectedGuest.roomNumber)
+      );
+      if (guestIndex >= 0) {
+        this.state.guests[guestIndex] = {
+          ...this.state.guests[guestIndex],
+          ...this.selectedGuest
+        };
+      }
+      this.persistState();
+      this.ui.renderGuest(this.selectedGuest);
+      this.ui.renderMessage(`Status corrected for room ${this.selectedGuest.roomNumber}.`, "success");
+    }
+    async handleMarkPaid(paymentId) {
+      if (!paymentId) {
+        return;
+      }
+      const payment = this.state.paymentList.find((record) => record.id === paymentId);
+      if (!payment || payment.paid) {
+        return;
+      }
+      const confirmed = await this.ui.promptConfirm({
+        title: "Confirm Payment",
+        message: `Mark ${payment.displayLocation} \u2014 ${payment.guestName} as paid (${payment.amountAed} AED)?`,
+        confirmLabel: "Mark Paid"
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.state.checkIns = markPaymentPaid(this.state.checkIns, paymentId);
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.refreshUi();
+      this.ui.renderMessage(`Payment recorded for ${payment.displayLocation} (${payment.amountAed} AED).`, "success");
+    }
     commitCheckIn(record, message, tone) {
       this.state.checkIns.unshift(record);
       this.state.paymentList = syncPaymentList(this.state.checkIns);
@@ -1415,11 +1778,18 @@
     async handleNewDay() {
       const confirmed = await this.ui.promptConfirm({
         title: "Start New Day",
-        message: "Delete today's check-ins, payment list, and unload both XML files? You will need to load new Meal Plan and Package Forecast files.",
-        confirmLabel: "New Day",
+        message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload both XML files.",
+        confirmLabel: "Download & New Day",
         danger: true
       });
       if (!confirmed) {
+        return;
+      }
+      try {
+        exportTodayReport(this.state.checkIns);
+        exportAccountingReport(this.state.paymentList);
+      } catch (error) {
+        this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
         return;
       }
       this.state.checkIns = [];
@@ -1464,7 +1834,7 @@
       }
       this.persistState();
       this.refreshUi();
-      this.ui.renderMessage("New day started. Please load both XML reports.", "success");
+      this.ui.renderMessage("Reports downloaded. New day started. Please load both XML reports.", "success");
     }
     handleExportToday() {
       try {
@@ -1486,11 +1856,33 @@
       this.ui.elements.searchInput.focus();
     }
   };
+  function applyBrandLogo(username) {
+    const logoPath = getBrandLogo(username);
+    const loginLogo = document.querySelector("#loginBrandLogo");
+    const loginFallback = document.querySelector("#loginBrandFallback");
+    const appLogo = document.querySelector("#appBrandLogo");
+    if (loginLogo && loginFallback) {
+      if (logoPath) {
+        loginLogo.src = logoPath;
+        loginLogo.alt = `${String(username || "").toUpperCase()} logo`;
+        loginLogo.hidden = false;
+        loginFallback.hidden = true;
+      } else {
+        loginLogo.hidden = true;
+        loginFallback.hidden = false;
+      }
+    }
+    if (appLogo && logoPath) {
+      appLogo.src = logoPath;
+      appLogo.alt = `${String(username || "").toUpperCase()} logo`;
+    }
+  }
   function showLoginScreen() {
     const loginScreen = document.querySelector("#loginScreen");
     const appShell = document.querySelector("#appShell");
     const loginError = document.querySelector("#loginError");
     const loginPassword = document.querySelector("#loginPassword");
+    const loginUsername = document.querySelector("#loginUsername");
     if (loginScreen) {
       loginScreen.hidden = false;
     }
@@ -1503,12 +1895,16 @@
     if (loginPassword) {
       loginPassword.value = "";
     }
-    document.querySelector("#loginUsername")?.focus();
+    applyBrandLogo(loginUsername?.value || "");
+    loginUsername?.focus();
   }
   function showAppScreen() {
     const loginScreen = document.querySelector("#loginScreen");
     const appShell = document.querySelector("#appShell");
     const userBadge = document.querySelector("#currentUserBadge");
+    const mobileUserBadge = document.querySelector("#mobileUserBadge");
+    const currentUser = getCurrentUser();
+    const userLabel = `User: ${currentUser}`;
     if (loginScreen) {
       loginScreen.hidden = true;
     }
@@ -1516,15 +1912,23 @@
       appShell.hidden = false;
     }
     if (userBadge) {
-      userBadge.textContent = `User: ${getCurrentUser()}`;
+      userBadge.textContent = userLabel;
     }
+    if (mobileUserBadge) {
+      mobileUserBadge.textContent = currentUser;
+    }
+    applyBrandLogo(currentUser);
   }
   function bindLoginForm() {
     const loginForm = document.querySelector("#loginForm");
     const loginError = document.querySelector("#loginError");
+    const loginUsername = document.querySelector("#loginUsername");
     if (!loginForm) {
       throw new Error("Missing login form");
     }
+    loginUsername?.addEventListener("input", (event) => {
+      applyBrandLogo(event.target.value);
+    });
     loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const username = document.querySelector("#loginUsername")?.value || "";
@@ -1533,6 +1937,7 @@
         if (loginError) {
           loginError.hidden = true;
         }
+        applyBrandLogo(username);
         launchBreakfastApp();
         return;
       }

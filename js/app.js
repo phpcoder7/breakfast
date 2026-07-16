@@ -1,11 +1,14 @@
-import { createApartmentCheckIn, createHotelCheckIn, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests } from "./checkin.js";
+import { createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests } from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
-import { syncPaymentList } from "./payment.js";
+import { markPaymentPaid, syncPaymentList } from "./payment.js";
 import { exactRoomMatch, searchGuests } from "./search.js";
 import { BreakfastUI } from "./ui.js";
-import { getCurrentUser, isLoggedIn, login, logout } from "./auth.js";
+import { getBrandLogo, getCurrentUser, isLoggedIn, login, logout } from "./auth.js";
 import {
+  BREAKFAST_STATUS,
+  normalizeRoom,
+  parseInteger,
   readStoredState,
   statusMeta,
   todayKey,
@@ -59,6 +62,9 @@ class BreakfastApp {
   init() {
     this.bindEvents();
     this.refreshUi();
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      this.ui.setMobileView("search");
+    }
   }
 
   bindEvents() {
@@ -106,9 +112,21 @@ class BreakfastApp {
 
     elements.walkInButton.addEventListener("click", () => this.handleSpecialGuest("walkIn"));
     elements.apartmentButton.addEventListener("click", () => this.handleSpecialGuest("apartment"));
+    elements.manualGuestButton?.addEventListener("click", () => this.handleManualGuest());
     elements.newDayButton.addEventListener("click", () => this.handleNewDay());
     elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
     elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
+    elements.paymentTableBody?.addEventListener("click", (event) => {
+      const payButton = event.target.closest("[data-pay-id]");
+      if (payButton) {
+        this.handleMarkPaid(payButton.dataset.payId);
+      }
+    });
+    elements.guestPanel?.addEventListener("click", (event) => {
+      if (event.target.closest("#correctStatusButton")) {
+        this.handleCorrectStatus();
+      }
+    });
     document.querySelector("#modalCloseButton").addEventListener("click", () => {
       this.ui.closeModal();
       this.focusSearch();
@@ -117,6 +135,25 @@ class BreakfastApp {
     elements.tabButtons.forEach((button) => {
       button.addEventListener("click", () => this.ui.activateTab(button.dataset.tabTarget));
     });
+
+    document.querySelector("#mobileToolsToggle")?.addEventListener("click", () => {
+      const panel = document.querySelector("#mobileToolsPanel");
+      if (panel) {
+        panel.hidden = !panel.hidden;
+      }
+    });
+
+    document.querySelector('[data-mobile-view="search"]')?.addEventListener("click", () => {
+      this.ui.setMobileView("search");
+      this.focusSearch();
+    });
+
+    document.querySelector("#mobileNewDayButton")?.addEventListener("click", () => this.handleNewDay());
+    document.querySelector("#mobileLogoutButton")?.addEventListener("click", () => {
+      document.querySelector("#logoutButton")?.click();
+    });
+    document.querySelector("#mobileExportTodayButton")?.addEventListener("click", () => this.handleExportToday());
+    document.querySelector("#mobileExportAccountingButton")?.addEventListener("click", () => this.handleExportAccounting());
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !this.ui.elements.modal.hidden) {
@@ -154,8 +191,13 @@ class BreakfastApp {
 
     this.ui.renderCheckIns(checkInsForTable);
     this.ui.renderPayments(paymentForTable);
-    this.ui.setCheckInEnabled(this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast);
-    this.ui.setExportState(Boolean(this.state.checkIns.length), Boolean(this.state.paymentList.length));
+    const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
+    const manualReady = Boolean(this.selectedGuest?.statusOverride);
+    this.ui.setCheckInEnabled(filesReady || manualReady);
+    this.ui.setExportState(
+      Boolean(this.state.checkIns.length),
+      Boolean(this.state.paymentList.length)
+    );
     const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkin";
     this.ui.activateTab(activeTab);
   }
@@ -266,6 +308,7 @@ class BreakfastApp {
     this.selectedGuest = guest;
     this.ui.renderGuest(guest);
     this.ui.clearSearchResults();
+    this.ui.activateTab("checkin");
     this.ui.elements.tableNumberInput.focus();
   }
 
@@ -351,6 +394,164 @@ class BreakfastApp {
     this.commitCheckIn(record, `${record.guestType} guest checked in successfully.`, "success");
   }
 
+  async handleManualGuest() {
+    const formValues = await this.ui.promptForm({
+      title: "Manual Guest (FO Correction)",
+      submitLabel: "Load Guest",
+      fields: [
+        { name: "roomNumber", label: "Room Number", required: true },
+        { name: "guestName", label: "Guest Name", required: true },
+        { name: "adults", label: "Adults", type: "number", min: 0, value: "1", required: true },
+        { name: "children", label: "Children", type: "number", min: 0, value: "0", required: true },
+        {
+          name: "breakfastStatus",
+          label: "Breakfast Status",
+          type: "select",
+          value: BREAKFAST_STATUS.INCLUDED,
+          required: true,
+          options: [
+            { value: BREAKFAST_STATUS.INCLUDED, label: "Breakfast Included" },
+            { value: BREAKFAST_STATUS.PAYMENT, label: "Payment Required (Room Only)" },
+            { value: BREAKFAST_STATUS.UNKNOWN, label: "Unknown Package" }
+          ]
+        },
+        { name: "breakfastQuantity", label: "Breakfast Qty", type: "number", min: 0, value: "2", required: true },
+        { name: "confirmationNumber", label: "Confirmation (optional)" },
+        { name: "mealPlan", label: "Meal Plan Note", value: "FO Correction" }
+      ]
+    });
+
+    if (!formValues) {
+      this.focusSearch();
+      return;
+    }
+
+    const guest = createManualGuest(formValues);
+    if (!guest.roomNumber) {
+      this.ui.renderMessage("Room number is required for manual guest.", "warning");
+      return;
+    }
+
+    const existingIndex = this.state.guests.findIndex(
+      (item) => normalizeRoom(item.roomNumber) === guest.roomNumber
+    );
+    if (existingIndex >= 0) {
+      this.state.guests[existingIndex] = {
+        ...this.state.guests[existingIndex],
+        ...guest,
+        id: this.state.guests[existingIndex].id,
+        statusOverride: true
+      };
+      this.selectGuest(this.state.guests[existingIndex]);
+    } else {
+      this.state.guests.push(guest);
+      this.selectGuest(guest);
+    }
+
+    this.persistState();
+    this.ui.renderMessage(`Manual guest ${guest.roomNumber} loaded. Review status then check in.`, "success");
+  }
+
+  async handleCorrectStatus() {
+    if (!this.selectedGuest) {
+      this.ui.renderMessage("Select a guest before correcting status.", "warning");
+      return;
+    }
+
+    const formValues = await this.ui.promptForm({
+      title: "Correct Breakfast Status (FO)",
+      submitLabel: "Apply Correction",
+      fields: [
+        {
+          name: "breakfastStatus",
+          label: "Breakfast Status",
+          type: "select",
+          value: this.selectedGuest.breakfastStatus,
+          required: true,
+          options: [
+            { value: BREAKFAST_STATUS.INCLUDED, label: "Breakfast Included" },
+            { value: BREAKFAST_STATUS.PAYMENT, label: "Payment Required (Room Only)" },
+            { value: BREAKFAST_STATUS.UNKNOWN, label: "Unknown Package" }
+          ]
+        },
+        {
+          name: "breakfastQuantity",
+          label: "Breakfast Qty",
+          type: "number",
+          min: 0,
+          value: String(this.selectedGuest.breakfastQuantity || 0),
+          required: true
+        },
+        {
+          name: "mealPlan",
+          label: "Meal Plan Note",
+          value: this.selectedGuest.mealPlan || ""
+        }
+      ]
+    });
+
+    if (!formValues) {
+      return;
+    }
+
+    const breakfastStatus = formValues.breakfastStatus || BREAKFAST_STATUS.UNKNOWN;
+    const breakfastQuantity =
+      breakfastStatus === BREAKFAST_STATUS.INCLUDED
+        ? parseInteger(formValues.breakfastQuantity, 0)
+        : parseInteger(formValues.breakfastQuantity, 0);
+
+    this.selectedGuest = {
+      ...this.selectedGuest,
+      breakfastStatus,
+      breakfastQuantity,
+      mealPlan: formValues.mealPlan || this.selectedGuest.mealPlan,
+      statusOverride: true
+    };
+
+    const guestIndex = this.state.guests.findIndex(
+      (guest) =>
+        guest.id === this.selectedGuest.id ||
+        normalizeRoom(guest.roomNumber) === normalizeRoom(this.selectedGuest.roomNumber)
+    );
+    if (guestIndex >= 0) {
+      this.state.guests[guestIndex] = {
+        ...this.state.guests[guestIndex],
+        ...this.selectedGuest
+      };
+    }
+
+    this.persistState();
+    this.ui.renderGuest(this.selectedGuest);
+    this.ui.renderMessage(`Status corrected for room ${this.selectedGuest.roomNumber}.`, "success");
+  }
+
+  async handleMarkPaid(paymentId) {
+    if (!paymentId) {
+      return;
+    }
+
+    const payment = this.state.paymentList.find((record) => record.id === paymentId);
+    if (!payment || payment.paid) {
+      return;
+    }
+
+    const confirmed = await this.ui.promptConfirm({
+      title: "Confirm Payment",
+      message: `Mark ${payment.displayLocation} — ${payment.guestName} as paid (${payment.amountAed} AED)?`,
+      confirmLabel: "Mark Paid"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.state.checkIns = markPaymentPaid(this.state.checkIns, paymentId);
+    this.state.paymentList = syncPaymentList(this.state.checkIns);
+    this.persistState();
+    this.refreshUi();
+    this.ui.renderMessage(`Payment recorded for ${payment.displayLocation} (${payment.amountAed} AED).`, "success");
+  }
+
   commitCheckIn(record, message, tone) {
     this.state.checkIns.unshift(record);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
@@ -370,12 +571,20 @@ class BreakfastApp {
   async handleNewDay() {
     const confirmed = await this.ui.promptConfirm({
       title: "Start New Day",
-      message: "Delete today's check-ins, payment list, and unload both XML files? You will need to load new Meal Plan and Package Forecast files.",
-      confirmLabel: "New Day",
+      message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload both XML files.",
+      confirmLabel: "Download & New Day",
       danger: true
     });
 
     if (!confirmed) {
+      return;
+    }
+
+    try {
+      exportTodayReport(this.state.checkIns);
+      exportAccountingReport(this.state.paymentList);
+    } catch (error) {
+      this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
       return;
     }
 
@@ -425,7 +634,7 @@ class BreakfastApp {
 
     this.persistState();
     this.refreshUi();
-    this.ui.renderMessage("New day started. Please load both XML reports.", "success");
+    this.ui.renderMessage("Reports downloaded. New day started. Please load both XML reports.", "success");
   }
 
   handleExportToday() {
@@ -451,11 +660,36 @@ class BreakfastApp {
   }
 }
 
+function applyBrandLogo(username) {
+  const logoPath = getBrandLogo(username);
+  const loginLogo = document.querySelector("#loginBrandLogo");
+  const loginFallback = document.querySelector("#loginBrandFallback");
+  const appLogo = document.querySelector("#appBrandLogo");
+
+  if (loginLogo && loginFallback) {
+    if (logoPath) {
+      loginLogo.src = logoPath;
+      loginLogo.alt = `${String(username || "").toUpperCase()} logo`;
+      loginLogo.hidden = false;
+      loginFallback.hidden = true;
+    } else {
+      loginLogo.hidden = true;
+      loginFallback.hidden = false;
+    }
+  }
+
+  if (appLogo && logoPath) {
+    appLogo.src = logoPath;
+    appLogo.alt = `${String(username || "").toUpperCase()} logo`;
+  }
+}
+
 function showLoginScreen() {
   const loginScreen = document.querySelector("#loginScreen");
   const appShell = document.querySelector("#appShell");
   const loginError = document.querySelector("#loginError");
   const loginPassword = document.querySelector("#loginPassword");
+  const loginUsername = document.querySelector("#loginUsername");
 
   if (loginScreen) {
     loginScreen.hidden = false;
@@ -470,13 +704,17 @@ function showLoginScreen() {
     loginPassword.value = "";
   }
 
-  document.querySelector("#loginUsername")?.focus();
+  applyBrandLogo(loginUsername?.value || "");
+  loginUsername?.focus();
 }
 
 function showAppScreen() {
   const loginScreen = document.querySelector("#loginScreen");
   const appShell = document.querySelector("#appShell");
   const userBadge = document.querySelector("#currentUserBadge");
+  const mobileUserBadge = document.querySelector("#mobileUserBadge");
+  const currentUser = getCurrentUser();
+  const userLabel = `User: ${currentUser}`;
 
   if (loginScreen) {
     loginScreen.hidden = true;
@@ -485,17 +723,27 @@ function showAppScreen() {
     appShell.hidden = false;
   }
   if (userBadge) {
-    userBadge.textContent = `User: ${getCurrentUser()}`;
+    userBadge.textContent = userLabel;
   }
+  if (mobileUserBadge) {
+    mobileUserBadge.textContent = currentUser;
+  }
+
+  applyBrandLogo(currentUser);
 }
 
 function bindLoginForm() {
   const loginForm = document.querySelector("#loginForm");
   const loginError = document.querySelector("#loginError");
+  const loginUsername = document.querySelector("#loginUsername");
 
   if (!loginForm) {
     throw new Error("Missing login form");
   }
+
+  loginUsername?.addEventListener("input", (event) => {
+    applyBrandLogo(event.target.value);
+  });
 
   loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -507,6 +755,7 @@ function bindLoginForm() {
       if (loginError) {
         loginError.hidden = true;
       }
+      applyBrandLogo(username);
       launchBreakfastApp();
       return;
     }

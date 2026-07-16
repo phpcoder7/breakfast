@@ -3,6 +3,7 @@ import {
   GUEST_TYPES,
   createId,
   formatTime,
+  normalizeRoom,
   normalizeText,
   parseInteger,
   toTimestamp
@@ -23,7 +24,8 @@ function buildBaseRecord({
   discount = "",
   entitlementExceeded = false,
   extraGuests = 0,
-  breakfastQuantity = 0
+  breakfastQuantity = 0,
+  statusOverride = false
 }) {
   const timestamp = toTimestamp();
 
@@ -45,7 +47,10 @@ function buildBaseRecord({
     discount,
     entitlementExceeded,
     extraGuests,
-    breakfastQuantity
+    breakfastQuantity,
+    statusOverride: Boolean(statusOverride),
+    paid: false,
+    paidAt: ""
   };
 }
 
@@ -84,6 +89,8 @@ export function createHotelCheckIn(guest, formValues) {
   const extraGuests = getExtraGuests(guest, actualGuests);
   const entitlementExceeded = extraGuests > 0;
 
+  const products = Array.isArray(guest.products) ? guest.products.join(", ") : String(guest.products || "-");
+
   return buildBaseRecord({
     roomNumber: guest.roomNumber,
     guestName: guest.fullName,
@@ -91,14 +98,15 @@ export function createHotelCheckIn(guest, formValues) {
     children: guest.children,
     tableNumber: normalizeText(formValues.tableNumber),
     mealPlan: guest.mealPlan,
-    products: guest.products.join(", "),
+    products,
     breakfastStatus: guest.breakfastStatus,
     guestType: GUEST_TYPES.HOTEL,
     actualGuests,
     confirmationNumber: guest.confirmationNumber,
     entitlementExceeded,
     extraGuests,
-    breakfastQuantity
+    breakfastQuantity,
+    statusOverride: Boolean(guest.statusOverride)
   });
 }
 
@@ -131,4 +139,34 @@ export function createApartmentCheckIn(formValues) {
     actualGuests: parseInteger(formValues.adults, 1) + parseInteger(formValues.children, 0),
     discount: "20%"
   });
+}
+
+export function createManualGuest(formValues) {
+  const adults = parseInteger(formValues.adults, 1);
+  const children = parseInteger(formValues.children, 0);
+  const breakfastStatus = normalizeText(formValues.breakfastStatus) || BREAKFAST_STATUS.INCLUDED;
+  const breakfastQuantity =
+    breakfastStatus === BREAKFAST_STATUS.INCLUDED
+      ? parseInteger(formValues.breakfastQuantity, adults + children)
+      : 0;
+
+  return {
+    id: createId("guest"),
+    roomNumber: normalizeRoom(formValues.roomNumber),
+    fullName: normalizeText(formValues.guestName) || "Hotel Guest",
+    adults,
+    children,
+    mealPlan: normalizeText(formValues.mealPlan) || "FO Correction",
+    products: ["FO Override"],
+    productDescriptions: ["Manual entry — Front Office correction"],
+    breakfastStatus,
+    breakfastQuantity,
+    confirmationNumber: normalizeText(formValues.confirmationNumber),
+    arrival: "",
+    departure: "",
+    reservationStatus: "Manual",
+    rateCode: "",
+    guestType: GUEST_TYPES.HOTEL,
+    statusOverride: true
+  };
 }

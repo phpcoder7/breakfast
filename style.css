@@ -11,10 +11,27 @@
   z-index: -1;
 }
 
+html,
 body {
   margin: 0;
+  height: 100%;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
+}
+
+.app-shell {
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.header-actions {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.header-actions::-webkit-scrollbar {
+  display: none;
 }
 
 /* File status badges driven by JS className swaps */
@@ -33,7 +50,6 @@ body {
   color: #d97706;
 }
 
-/* Message banners driven by JS */
 .message-banner.info {
   background: #eff6ff;
   color: #2563eb;
@@ -54,7 +70,6 @@ body {
   color: #dc2626;
 }
 
-/* Tab active state driven by JS */
 .tab-button {
   background: #f1f5f9;
   color: #64748b;
@@ -66,7 +81,6 @@ body {
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
 }
 
-/* Breakfast status badges */
 .status-included {
   background: #dcfce7;
   color: #16a34a;
@@ -87,7 +101,6 @@ body {
   color: #ea580c;
 }
 
-/* Search result active state */
 .search-result.is-active {
   background: #eff6ff !important;
   box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.35);
@@ -100,14 +113,13 @@ mark {
   padding: 0 2px;
 }
 
-/* Modal button variants created in JS */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 56px;
-  padding: 0 1.25rem;
+  min-height: 48px;
+  padding: 0 1.1rem;
   border: 0;
   border-radius: 1rem;
   font-weight: 700;
@@ -152,8 +164,9 @@ mark {
   letter-spacing: 0.04em;
 }
 
-.modal-form .form-field input {
-  height: 56px;
+.modal-form .form-field input,
+.modal-form .form-field select {
+  height: 48px;
   width: 100%;
   border: 0;
   border-radius: 1rem;
@@ -164,12 +177,12 @@ mark {
   outline: none;
 }
 
-.modal-form .form-field input:focus {
+.modal-form .form-field input:focus,
+.modal-form .form-field select:focus {
   background: #fff;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 }
 
-/* Success animation */
 .success-toast {
   transition: opacity 0.25s ease, transform 0.25s ease;
   transform: translateY(6px);
@@ -209,7 +222,19 @@ mark {
   animation: pulseSoft 0.7s ease;
 }
 
-/* Smooth scrolling for iPad lists */
+.room-title {
+  font-size: clamp(2.25rem, 5.5vw, 4.25rem);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.guest-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
 #searchResults,
 #guestPanel,
 #checkinTableBody,
@@ -218,14 +243,203 @@ mark {
   -webkit-overflow-scrolling: touch;
 }
 
-@media (max-width: 1023px) {
+/* iPad Air / smaller Pro landscape: tighten vertical rhythm */
+@media (max-height: 900px) and (orientation: landscape) {
+  .app-shell {
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .app-header {
+    margin-bottom: 0.4rem !important;
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+
+  .search-input,
+  .checkin-input,
+  .checkin-btn {
+    height: 2.75rem !important;
+  }
+
+  .search-input {
+    font-size: 1.25rem !important;
+  }
+
+  .checkin-input {
+    font-size: 1.5rem !important;
+  }
+
+  .checkin-btn {
+    font-size: 1rem !important;
+    margin-top: 0.6rem !important;
+  }
+
+  #searchResults {
+    max-height: 5.5rem;
+  }
+
+  .guest-detail-grid {
+    gap: 0.4rem;
+  }
+
+  .room-title {
+    font-size: clamp(2rem, 4.8vw, 3.25rem);
+  }
+}
+
+/* iPad Mini landscape: denser layout */
+@media (max-height: 780px) and (orientation: landscape) {
+  .app-shell {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+
+  .app-header {
+    margin-bottom: 0.3rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .search-panel,
+  .guest-panel {
+    padding: 0.6rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .search-input,
+  .checkin-input,
+  .checkin-btn {
+    height: 2.5rem !important;
+    border-radius: 0.85rem !important;
+  }
+
+  .search-input {
+    font-size: 1.1rem !important;
+  }
+
+  .checkin-input {
+    font-size: 1.35rem !important;
+  }
+
+  .checkin-btn {
+    font-size: 0.95rem !important;
+  }
+
+  #searchResults {
+    max-height: 4.5rem;
+    margin-top: 0.35rem;
+  }
+
+  .room-title {
+    font-size: clamp(1.75rem, 4.2vw, 2.75rem);
+  }
+
+  .tab-button {
+    height: 2.35rem !important;
+    font-size: 0.7rem !important;
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+  }
+
+  .file-status {
+    padding: 0.3rem 0.5rem !important;
+    font-size: 0.62rem !important;
+  }
+}
+
+/* Narrow phones: dedicated single-panel mobile app layout */
+@media (max-width: 767px) {
   body {
-    overflow: auto;
+    overflow: hidden;
   }
 
   #appShell {
-    height: auto;
-    max-height: none;
-    overflow: visible;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .main-workspace {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    gap: 0.5rem;
+  }
+
+  .main-workspace.mobile-view-search .left-panel {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .main-workspace.mobile-view-search .right-panel {
+    display: none;
+  }
+
+  .main-workspace.mobile-view-checkin .left-panel,
+  .main-workspace.mobile-view-checkins .left-panel,
+  .main-workspace.mobile-view-payments .left-panel {
+    display: none;
+  }
+
+  .main-workspace.mobile-view-checkin .right-panel,
+  .main-workspace.mobile-view-checkins .right-panel,
+  .main-workspace.mobile-view-payments .right-panel {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .left-panel,
+  .right-panel {
+    min-height: 0;
+  }
+
+  .guest-panel {
+    flex: 1 1 auto;
+  }
+
+  .mobile-bottom-nav .mobile-nav-btn.is-active,
+  .mobile-bottom-nav .tab-button.is-active {
+    background: #2563eb;
+    color: #fff;
+  }
+
+  .mobile-tools {
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+
+  .room-title {
+    font-size: clamp(2rem, 12vw, 3rem);
+  }
+
+  #searchResults {
+    max-height: 9rem;
+  }
+
+  .empty-guest-panel {
+    min-height: 160px !important;
+  }
+}
+
+/* Wide Pro: keep generous spacing */
+@media (min-width: 1200px) and (min-height: 900px) {
+  .search-input {
+    height: 4rem;
+    font-size: 1.5rem;
+  }
+
+  .checkin-input,
+  .checkin-btn {
+    height: 4rem;
+  }
+
+  .room-title {
+    font-size: clamp(3rem, 5vw, 4.4rem);
   }
 }

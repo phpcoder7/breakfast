@@ -2,8 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Breakfast Check-in</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <meta name="theme-color" content="#2563EB" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -25,7 +28,7 @@
               press: "0 2px 8px rgba(15, 23, 42, 0.08)"
             },
             minHeight: {
-              touch: "56px"
+              touch: "48px"
             }
           }
         }
@@ -39,41 +42,42 @@
   </head>
   <body class="bg-surface font-sans text-slate-800 antialiased overflow-hidden">
     <!-- Login -->
-    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-primary p-6">
-      <form id="loginForm" class="w-full max-w-md rounded-3xl bg-white/95 p-8 shadow-soft backdrop-blur">
-        <div class="mb-8 text-center">
-          <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <i class="fa-solid fa-mug-saucer text-2xl"></i>
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-primary p-4 sm:p-6">
+      <form id="loginForm" class="w-full max-w-md rounded-3xl bg-white/95 p-6 shadow-soft backdrop-blur sm:p-8">
+        <div class="mb-6 text-center sm:mb-8">
+          <div id="loginBrandWrap" class="mx-auto mb-4 flex h-28 w-56 items-center justify-center rounded-2xl bg-slate-900 px-5 sm:mb-5 sm:h-32 sm:w-64 sm:rounded-3xl">
+            <img id="loginBrandLogo" src="./assets/logos/kca.svg" alt="Brand logo" class="max-h-20 w-auto object-contain sm:max-h-24" hidden />
+            <i id="loginBrandFallback" class="fa-solid fa-mug-saucer text-3xl text-white sm:text-4xl"></i>
           </div>
           <p class="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Hotel Restaurant</p>
-          <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Breakfast Check-in</h1>
+          <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Breakfast Check-in</h1>
           <p class="mt-2 text-slate-500">Sign in to continue</p>
         </div>
-        <label class="mb-4 block">
+        <label class="mb-3 block sm:mb-4">
           <span class="mb-2 block text-sm font-semibold text-slate-600">Username</span>
           <input
             id="loginUsername"
             type="text"
             autocomplete="username"
             required
-            class="h-14 w-full rounded-2xl border-0 bg-slate-100 px-4 text-lg font-medium outline-none ring-0 transition focus:bg-white focus:ring-2 focus:ring-primary/30"
+            class="h-12 w-full rounded-2xl border-0 bg-slate-100 px-4 text-base font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/30 sm:h-14 sm:text-lg"
           />
         </label>
-        <label class="mb-4 block">
+        <label class="mb-3 block sm:mb-4">
           <span class="mb-2 block text-sm font-semibold text-slate-600">Password</span>
           <input
             id="loginPassword"
             type="password"
             autocomplete="current-password"
             required
-            class="h-14 w-full rounded-2xl border-0 bg-slate-100 px-4 text-lg font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/30"
+            class="h-12 w-full rounded-2xl border-0 bg-slate-100 px-4 text-base font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/30 sm:h-14 sm:text-lg"
           />
         </label>
-        <p id="loginError" class="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-danger" hidden>
+        <p id="loginError" class="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-danger sm:mb-4" hidden>
           Invalid username or password.
         </p>
         <button
-          class="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-lg font-bold text-white shadow-soft transition active:scale-[0.98] hover:bg-blue-600"
+          class="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-bold text-white shadow-soft transition active:scale-[0.98] hover:bg-blue-600 sm:h-14 sm:text-lg"
           type="submit"
         >
           <i class="fa-solid fa-right-to-bracket"></i>
@@ -83,98 +87,141 @@
     </div>
 
     <!-- App Shell -->
-    <div id="appShell" class="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-[1400px] flex-col px-3 py-3 md:px-4" hidden>
+    <div id="appShell" class="app-shell mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-[1400px] flex-col px-2 py-2 sm:px-3 sm:py-3" hidden>
+      <input id="mealPlanFile" class="visually-hidden-input" type="file" accept=".xml,.XML,text/xml,application/xml" />
+      <input id="packageForecastFile" class="visually-hidden-input" type="file" accept=".xml,.XML,text/xml,application/xml" />
+
       <!-- Top Bar -->
-      <header class="mb-3 flex shrink-0 items-center justify-between gap-3 rounded-3xl bg-white px-4 py-3 shadow-card">
-        <div class="flex min-w-0 items-center gap-3">
-          <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-soft">
-            <i class="fa-solid fa-mug-saucer"></i>
+      <header class="app-header mb-2 flex shrink-0 items-center justify-between gap-2 rounded-2xl bg-white px-2.5 py-2 shadow-card sm:mb-3 sm:gap-3 sm:rounded-3xl sm:px-4 sm:py-2.5">
+        <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div class="flex h-14 w-28 shrink-0 items-center justify-center rounded-2xl bg-slate-900 px-3 shadow-soft sm:h-16 sm:w-36 sm:rounded-2xl">
+            <img id="appBrandLogo" src="./assets/logos/kca.svg" alt="Brand logo" class="max-h-11 w-auto object-contain sm:max-h-12" />
           </div>
           <div class="min-w-0">
-            <h1 class="truncate text-xl font-extrabold tracking-tight text-slate-900">Breakfast Check-in</h1>
-            <p class="truncate text-xs font-medium text-slate-400">Restaurant Host Station</p>
+            <h1 class="truncate text-base font-extrabold tracking-tight text-slate-900 sm:text-xl">Breakfast Check-in</h1>
+            <p class="hidden truncate text-xs font-medium text-slate-400 sm:block">Restaurant Host Station</p>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span id="mealPlanStatus" class="file-status is-missing inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold">
-            Meal Plan: Missing
-          </span>
-          <span id="packageForecastStatus" class="file-status is-missing inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold">
-            Package Forecast: Missing
-          </span>
+        <div class="flex shrink-0 items-center gap-2">
+          <!-- Desktop / wide screens only -->
+          <div class="header-actions hidden items-center gap-2 xl:flex">
+            <span id="mealPlanStatus" class="file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold">
+              Meal Plan: Missing
+            </span>
+            <span id="packageForecastStatus" class="file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold">
+              Package Forecast: Missing
+            </span>
 
-          <input id="mealPlanFile" class="visually-hidden-input" type="file" accept=".xml,.XML,text/xml,application/xml" />
-          <label for="mealPlanFile" class="inline-flex h-touch min-h-touch cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
-            <i class="fa-solid fa-file-arrow-up text-primary"></i>
-            <span class="hidden lg:inline">Meal Plan</span>
-          </label>
+            <label for="mealPlanFile" class="inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
+              <i class="fa-solid fa-file-arrow-up text-primary"></i>
+              <span>Meal Plan</span>
+            </label>
 
-          <input id="packageForecastFile" class="visually-hidden-input" type="file" accept=".xml,.XML,text/xml,application/xml" />
-          <label for="packageForecastFile" class="inline-flex h-touch min-h-touch cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
-            <i class="fa-solid fa-file-arrow-up text-primary"></i>
-            <span class="hidden lg:inline">Forecast</span>
-          </label>
+            <label for="packageForecastFile" class="inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
+              <i class="fa-solid fa-file-arrow-up text-primary"></i>
+              <span>Forecast</span>
+            </label>
 
-          <button id="newDayButton" class="inline-flex h-touch min-h-touch items-center gap-2 rounded-2xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
-            <i class="fa-solid fa-rotate-left"></i>
-            <span class="hidden xl:inline">New Day</span>
-          </button>
+            <button id="newDayButton" class="inline-flex h-11 min-h-touch shrink-0 items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
+              <i class="fa-solid fa-rotate-left"></i>
+              <span>New Day</span>
+            </button>
 
-          <span id="currentUserBadge" class="inline-flex h-touch min-h-touch items-center rounded-full bg-primary/10 px-4 text-sm font-bold text-primary"></span>
+            <span id="currentUserBadge" class="inline-flex h-11 min-h-touch items-center rounded-full bg-primary/10 px-3 text-sm font-bold text-primary"></span>
 
-          <button id="logoutButton" class="inline-flex h-touch min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-4 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
-            <i class="fa-solid fa-right-from-bracket"></i>
-            <span class="hidden lg:inline">Logout</span>
+            <button id="logoutButton" class="inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span>Logout</span>
+            </button>
+          </div>
+
+          <!-- Phone + tablet: Tools menu -->
+          <span id="mobileUserBadge" class="inline-flex h-10 items-center rounded-full bg-primary/10 px-3 text-xs font-bold text-primary xl:hidden"></span>
+          <button id="mobileToolsToggle" class="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white xl:hidden" type="button">
+            <i class="fa-solid fa-bars"></i>
+            <span>Tools</span>
           </button>
         </div>
       </header>
 
-      <section id="startupError" class="mb-3 shrink-0 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-danger" hidden></section>
-      <section id="messageArea" class="message-banner mb-3 shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold" hidden></section>
+      <!-- Phone + tablet tools panel -->
+      <section id="mobileToolsPanel" class="mobile-tools mb-2 shrink-0 rounded-2xl bg-white p-3 shadow-card xl:hidden" hidden>
+        <div class="mb-3 grid grid-cols-2 gap-2">
+          <div id="mobileMealPlanStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Meal Plan: Missing</div>
+          <div id="mobilePackageForecastStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Forecast: Missing</div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <label for="mealPlanFile" class="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
+            <i class="fa-solid fa-file-arrow-up text-primary"></i>
+            <span>Meal Plan XML</span>
+          </label>
+          <label for="packageForecastFile" class="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
+            <i class="fa-solid fa-file-arrow-up text-primary"></i>
+            <span>Forecast XML</span>
+          </label>
+          <button id="mobileNewDayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700" type="button">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>New Day</span>
+          </button>
+          <button id="mobileLogoutButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white" type="button">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Logout</span>
+          </button>
+          <button id="mobileExportTodayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-bold text-success" type="button">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Report</span>
+          </button>
+          <button id="mobileExportAccountingButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-bold text-danger" type="button">
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+            <span>Accounting</span>
+          </button>
+        </div>
+      </section>
 
-      <!-- Main two-column layout -->
-      <main class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[35%_65%]">
-        <!-- LEFT PANEL 35% -->
-        <section class="flex min-h-0 flex-col gap-3 overflow-hidden">
-          <!-- Search -->
-          <div class="shrink-0 rounded-3xl bg-white p-4 shadow-card">
-            <div class="mb-3 flex items-center gap-2">
+      <section id="startupError" class="mb-2 shrink-0 rounded-2xl bg-red-50 px-3 py-2 text-sm font-semibold text-danger sm:mb-3 sm:px-4 sm:py-3" hidden></section>
+      <section id="messageArea" class="message-banner mb-2 shrink-0 rounded-2xl px-3 py-2 text-sm font-semibold sm:mb-3 sm:px-4 sm:py-3" hidden></section>
+
+      <!-- Main layout -->
+      <main class="main-workspace grid min-h-0 flex-1 gap-2 sm:gap-3 md:grid-cols-[38%_62%] xl:grid-cols-[35%_65%]">
+        <!-- LEFT PANEL -->
+        <section class="left-panel flex min-h-0 flex-col gap-2 overflow-hidden sm:gap-3">
+          <div class="search-panel shrink-0 rounded-2xl bg-white p-3 shadow-card sm:rounded-3xl sm:p-4">
+            <div class="mb-2 flex items-center gap-2 sm:mb-3">
               <i class="fa-solid fa-magnifying-glass text-primary"></i>
-              <h2 class="text-base font-extrabold text-slate-900">Room Search</h2>
+              <h2 class="text-sm font-extrabold text-slate-900 sm:text-base">Room Search</h2>
             </div>
             <input
               id="searchInput"
-              class="h-16 w-full rounded-2xl border-0 bg-slate-100 px-5 text-2xl font-bold tracking-wide text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-primary/25"
+              class="search-input h-12 w-full rounded-2xl border-0 bg-slate-100 px-4 text-xl font-bold tracking-wide text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-primary/25 sm:h-14 sm:px-5 sm:text-2xl"
               type="text"
               inputmode="search"
               placeholder="Room / Name / Confirmation"
               autocomplete="off"
               disabled
             />
-            <div id="searchResults" class="mt-3 max-h-40 space-y-2 overflow-y-auto"></div>
-            <div class="mt-3">
-              <p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Recent</p>
-              <div id="recentSearches" class="flex flex-wrap gap-2"></div>
+            <div id="searchResults" class="mt-2 max-h-28 space-y-1.5 overflow-y-auto sm:mt-3 sm:max-h-36 sm:space-y-2"></div>
+            <div class="mt-2 sm:mt-3">
+              <p class="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:mb-2 sm:text-xs">Recent</p>
+              <div id="recentSearches" class="flex flex-wrap gap-1.5 sm:gap-2"></div>
             </div>
           </div>
 
-          <!-- Guest / Room Card -->
-          <div class="min-h-0 flex-1 overflow-y-auto rounded-3xl bg-white p-4 shadow-card">
-            <div class="mb-3 flex items-center gap-2">
+          <div class="guest-panel min-h-0 flex-1 overflow-y-auto rounded-2xl bg-white p-3 shadow-card sm:rounded-3xl sm:p-4">
+            <div class="mb-2 flex items-center gap-2 sm:mb-3">
               <i class="fa-solid fa-door-open text-primary"></i>
-              <h2 class="text-base font-extrabold text-slate-900">Guest Information</h2>
+              <h2 class="text-sm font-extrabold text-slate-900 sm:text-base">Guest Information</h2>
             </div>
             <div id="guestPanel"></div>
           </div>
         </section>
 
-        <!-- RIGHT PANEL 65% -->
-        <section class="flex min-h-0 flex-col overflow-hidden rounded-3xl bg-white p-4 shadow-card">
-          <div class="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-            <div class="flex flex-wrap gap-2">
+        <!-- RIGHT PANEL -->
+        <section class="right-panel flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white p-3 shadow-card sm:rounded-3xl sm:p-4">
+          <div class="desktop-tabs mb-2 hidden shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-3 md:flex">
+            <div class="flex flex-wrap gap-1.5 sm:gap-2">
               <button
-                class="tab-button is-active inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-sm font-bold transition"
+                class="tab-button is-active inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition sm:h-11 sm:rounded-2xl sm:px-4 sm:text-sm"
                 type="button"
                 data-tab-target="checkin"
               >
@@ -182,7 +229,7 @@
                 Check In
               </button>
               <button
-                class="tab-button inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-sm font-bold transition"
+                class="tab-button inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition sm:h-11 sm:rounded-2xl sm:px-4 sm:text-sm"
                 type="button"
                 data-tab-target="checkins"
               >
@@ -190,7 +237,7 @@
                 Today's Check-ins
               </button>
               <button
-                class="tab-button inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-sm font-bold transition"
+                class="tab-button inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition sm:h-11 sm:rounded-2xl sm:px-4 sm:text-sm"
                 type="button"
                 data-tab-target="payments"
               >
@@ -198,121 +245,141 @@
                 Payment Queue
               </button>
             </div>
-            <div class="flex gap-2">
-              <button id="exportTodayButton" class="inline-flex h-12 items-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40" type="button" disabled>
+            <div class="flex gap-1.5 sm:gap-2">
+              <button id="exportTodayButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-3 sm:text-xs" type="button" disabled>
                 <i class="fa-solid fa-file-excel text-success"></i>
                 <span>Report</span>
               </button>
-              <button id="exportAccountingButton" class="inline-flex h-12 items-center gap-2 rounded-2xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40" type="button" disabled>
+              <button id="exportAccountingButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-3 sm:text-xs" type="button" disabled>
                 <i class="fa-solid fa-file-invoice-dollar text-danger"></i>
                 <span>Accounting</span>
               </button>
             </div>
           </div>
 
-          <!-- Check In tab -->
           <div data-tab-panel="checkin" class="min-h-0 flex-1 overflow-y-auto">
-            <div class="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
-              <div class="rounded-3xl bg-slate-50 p-4">
-                <div class="mb-3 flex items-center gap-2">
+            <div class="grid gap-2 sm:gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+              <div class="rounded-2xl bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+                <div class="mb-2 flex items-center gap-2 sm:mb-3">
                   <i class="fa-solid fa-utensils text-primary"></i>
-                  <h2 class="text-base font-extrabold text-slate-900">Check In</h2>
+                  <h2 class="text-sm font-extrabold text-slate-900 sm:text-base">Check In</h2>
                 </div>
-                <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid gap-2 sm:grid-cols-2 sm:gap-3">
                   <label class="block">
-                    <span class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">Table Number</span>
+                    <span class="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:mb-2 sm:text-xs">Table Number</span>
                     <input
                       id="tableNumber"
                       type="text"
                       inputmode="numeric"
                       placeholder="Table #"
                       disabled
-                      class="h-16 w-full rounded-2xl border-0 bg-white px-4 text-center text-3xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25"
+                      class="checkin-input h-12 w-full rounded-2xl border-0 bg-white px-3 text-center text-2xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25 sm:h-14 sm:px-4 sm:text-3xl"
                     />
                   </label>
                   <label class="block">
-                    <span class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">Actual Guests</span>
+                    <span class="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:mb-2 sm:text-xs">Actual Guests</span>
                     <input
                       id="actualGuests"
                       type="number"
                       min="0"
                       placeholder="Optional"
                       disabled
-                      class="h-16 w-full rounded-2xl border-0 bg-white px-4 text-center text-3xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25"
+                      class="checkin-input h-12 w-full rounded-2xl border-0 bg-white px-3 text-center text-2xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25 sm:h-14 sm:px-4 sm:text-3xl"
                     />
                   </label>
                 </div>
                 <button
                   id="checkInButton"
-                  class="mt-4 flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-success text-xl font-extrabold text-white shadow-soft transition active:scale-[0.98] hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  class="checkin-btn mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-success text-lg font-extrabold text-white shadow-soft transition active:scale-[0.98] hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-40 sm:mt-4 sm:h-14 sm:gap-3 sm:text-xl"
                   type="button"
                   disabled
                 >
-                  <i class="fa-solid fa-check text-2xl"></i>
+                  <i class="fa-solid fa-check text-xl sm:text-2xl"></i>
                   <span>CHECK IN</span>
                 </button>
-                <div id="successToast" class="success-toast pointer-events-none mt-3 flex items-center justify-center gap-2 rounded-2xl bg-green-50 py-3 text-sm font-bold text-success opacity-0">
+                <div id="successToast" class="success-toast pointer-events-none mt-2 flex items-center justify-center gap-2 rounded-2xl bg-green-50 py-2 text-sm font-bold text-success opacity-0 sm:mt-3 sm:py-3">
                   <i class="fa-solid fa-circle-check"></i>
                   <span>Checked in successfully</span>
                 </div>
               </div>
 
-              <div class="flex flex-col gap-3">
-                <div class="rounded-3xl bg-slate-50 p-4">
-                  <p class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Special Guests</p>
-                  <div class="grid gap-2">
-                    <button id="walkInButton" class="inline-flex h-touch min-h-touch items-center justify-center gap-2 rounded-2xl bg-danger text-sm font-bold text-white transition active:scale-[0.97]" type="button">
+              <div class="flex flex-col gap-2 sm:gap-3">
+                <div class="rounded-2xl bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+                  <p class="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:mb-3 sm:text-xs">Special Guests</p>
+                  <div class="grid grid-cols-2 gap-2 lg:grid-cols-1">
+                    <button id="walkInButton" class="inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-xl bg-danger text-xs font-bold text-white transition active:scale-[0.97] sm:h-11 sm:rounded-2xl sm:text-sm" type="button">
                       <i class="fa-solid fa-user-plus"></i>
                       <span>Walk-In</span>
                     </button>
-                    <button id="apartmentButton" class="inline-flex h-touch min-h-touch items-center justify-center gap-2 rounded-2xl bg-warning text-sm font-bold text-white transition active:scale-[0.97]" type="button">
+                    <button id="apartmentButton" class="inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-xl bg-warning text-xs font-bold text-white transition active:scale-[0.97] sm:h-11 sm:rounded-2xl sm:text-sm" type="button">
                       <i class="fa-solid fa-building-user"></i>
                       <span>Apartment</span>
+                    </button>
+                    <button id="manualGuestButton" class="col-span-2 inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-xl bg-slate-800 text-xs font-bold text-white transition active:scale-[0.97] lg:col-span-1 sm:h-11 sm:rounded-2xl sm:text-sm" type="button">
+                      <i class="fa-solid fa-user-pen"></i>
+                      <span>Manual Guest (FO)</span>
                     </button>
                   </div>
                 </div>
 
                 <div class="grid flex-1 grid-cols-2 gap-2">
-                  <div class="rounded-3xl bg-slate-50 p-3">
+                  <div class="rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-ins</p>
-                    <p id="statCheckIns" class="mt-1 text-3xl font-extrabold text-slate-900">0</p>
+                    <p id="statCheckIns" class="mt-0.5 text-2xl font-extrabold text-slate-900 sm:mt-1 sm:text-3xl">0</p>
                   </div>
-                  <div class="rounded-3xl bg-slate-50 p-3">
+                  <div class="rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Payments</p>
-                    <p id="statPayments" class="mt-1 text-3xl font-extrabold text-danger">0</p>
+                    <p id="statPayments" class="mt-0.5 text-2xl font-extrabold text-danger sm:mt-1 sm:text-3xl">0</p>
                   </div>
-                  <div class="rounded-3xl bg-green-50 p-3">
+                  <div class="rounded-2xl bg-green-50 p-2.5 sm:rounded-3xl sm:p-3">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-success">Included</p>
-                    <p id="statIncluded" class="mt-1 text-2xl font-extrabold text-success">0</p>
+                    <p id="statIncluded" class="mt-0.5 text-xl font-extrabold text-success sm:mt-1 sm:text-2xl">0</p>
                   </div>
-                  <div class="rounded-3xl bg-red-50 p-3">
+                  <div class="rounded-2xl bg-red-50 p-2.5 sm:rounded-3xl sm:p-3">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-danger">Pay</p>
-                    <p id="statPaymentRequired" class="mt-1 text-2xl font-extrabold text-danger">0</p>
+                    <p id="statPaymentRequired" class="mt-0.5 text-xl font-extrabold text-danger sm:mt-1 sm:text-2xl">0</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Today's Check-ins tab -->
           <div data-tab-panel="checkins" class="min-h-0 flex-1 overflow-y-auto" hidden>
             <div id="checkinTableBody" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
           </div>
 
-          <!-- Payment Queue tab -->
           <div data-tab-panel="payments" class="min-h-0 flex-1 overflow-y-auto" hidden>
             <div id="paymentTableBody" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
           </div>
         </section>
       </main>
+
+      <!-- Mobile bottom navigation -->
+      <nav class="mobile-bottom-nav mt-2 grid shrink-0 grid-cols-4 gap-1 rounded-2xl bg-white p-1.5 shadow-card md:hidden">
+        <button class="mobile-nav-btn inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold text-slate-500" type="button" data-mobile-view="search">
+          <i class="fa-solid fa-magnifying-glass text-base"></i>
+          <span>Search</span>
+        </button>
+        <button class="mobile-nav-btn tab-button is-active inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold" type="button" data-tab-target="checkin" data-mobile-view="checkin">
+          <i class="fa-solid fa-utensils text-base"></i>
+          <span>Check In</span>
+        </button>
+        <button class="mobile-nav-btn tab-button inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold" type="button" data-tab-target="checkins" data-mobile-view="checkins">
+          <i class="fa-solid fa-list-check text-base"></i>
+          <span>Today</span>
+        </button>
+        <button class="mobile-nav-btn tab-button inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold" type="button" data-tab-target="payments" data-mobile-view="payments">
+          <i class="fa-solid fa-cash-register text-base"></i>
+          <span>Pay</span>
+        </button>
+      </nav>
     </div>
 
-    <!-- Modal -->
     <div id="modal" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm" hidden aria-hidden="true">
-      <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-soft" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="w-full max-w-lg rounded-3xl bg-white p-5 shadow-soft sm:p-6" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="mb-4 flex items-start justify-between gap-3">
-          <h2 id="modalTitle" class="text-xl font-extrabold text-slate-900"></h2>
-          <button id="modalCloseButton" class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition active:scale-[0.96]" type="button">
+          <h2 id="modalTitle" class="text-lg font-extrabold text-slate-900 sm:text-xl"></h2>
+          <button id="modalCloseButton" class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition active:scale-[0.96]" type="button">
             <i class="fa-solid fa-xmark text-lg"></i>
           </button>
         </div>

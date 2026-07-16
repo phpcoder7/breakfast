@@ -1,4 +1,11 @@
-import { BREAKFAST_STATUS, reasonLabel } from "./utils.js";
+import {
+  APARTMENT_PRICE_AED,
+  BREAKFAST_PRICE_AED,
+  BREAKFAST_STATUS,
+  GUEST_TYPES,
+  reasonLabel,
+  toTimestamp
+} from "./utils.js";
 
 export function requiresPayment(record) {
   return (
@@ -18,7 +25,26 @@ export function paymentReason(record) {
   return reasonLabel(record.guestType, record.breakfastStatus);
 }
 
+export function chargeableGuests(record) {
+  if (record.entitlementExceeded) {
+    return Number(record.extraGuests) || 0;
+  }
+
+  return Number(record.actualGuests) || 0;
+}
+
+export function unitPriceAed(record) {
+  return record.guestType === GUEST_TYPES.APARTMENT ? APARTMENT_PRICE_AED : BREAKFAST_PRICE_AED;
+}
+
+export function amountAed(record) {
+  return chargeableGuests(record) * unitPriceAed(record);
+}
+
 export function createPaymentRecord(checkInRecord) {
+  const qty = chargeableGuests(checkInRecord);
+  const unitPrice = unitPriceAed(checkInRecord);
+
   return {
     id: checkInRecord.id,
     timestamp: checkInRecord.timestamp,
@@ -28,12 +54,34 @@ export function createPaymentRecord(checkInRecord) {
     guestType: checkInRecord.guestType,
     reason: paymentReason(checkInRecord),
     extraGuests: checkInRecord.extraGuests || 0,
-    entitlementExceeded: Boolean(checkInRecord.entitlementExceeded)
+    entitlementExceeded: Boolean(checkInRecord.entitlementExceeded),
+    chargeableGuests: qty,
+    unitPriceAed: unitPrice,
+    amountAed: qty * unitPrice,
+    paid: Boolean(checkInRecord.paid),
+    paidAt: checkInRecord.paidAt || ""
   };
 }
 
 export function syncPaymentList(checkIns) {
   return checkIns
     .filter(requiresPayment)
-    .map((record) => createPaymentRecord(record));
+    .map((record) => createPaymentRecord(record))
+    .sort((a, b) => Number(a.paid) - Number(b.paid) || String(b.timestamp).localeCompare(String(a.timestamp)));
+}
+
+export function markPaymentPaid(checkIns, paymentId) {
+  const paidAt = toTimestamp();
+
+  return checkIns.map((record) => {
+    if (record.id !== paymentId) {
+      return record;
+    }
+
+    return {
+      ...record,
+      paid: true,
+      paidAt
+    };
+  });
 }

@@ -22,9 +22,9 @@ function statusBadgeLabel(status, guestType = "") {
   return statusMeta(status).label;
 }
 
-function infoChip(icon, label, value) {
+function infoChip(icon, label, value, wide = false) {
   return `
-    <div class="rounded-2xl bg-slate-50 px-3 py-2.5">
+    <div class="rounded-2xl bg-slate-50 px-3 py-2.5${wide ? " col-span-2" : ""}">
       <div class="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         <i class="fa-solid ${icon}"></i>
         <span>${escapeHtml(label)}</span>
@@ -37,7 +37,7 @@ function infoChip(icon, label, value) {
 function guestPanelMarkup(guest) {
   if (!guest) {
     return `
-      <div class="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-3xl bg-slate-50 px-6 text-center">
+      <div class="empty-guest-panel flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-3xl bg-slate-50 px-6 text-center sm:min-h-[280px]">
         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-primary shadow-card">
           <i class="fa-solid fa-mug-saucer text-2xl"></i>
         </div>
@@ -56,12 +56,18 @@ function guestPanelMarkup(guest) {
         ? "from-red-50 to-white border-red-100"
         : "from-yellow-50 to-white border-yellow-100";
 
+  const mealPlan = guest.mealPlan && guest.mealPlan !== "-" ? guest.mealPlan : "";
+  const packages = listToText(guest.products);
+  const mealPlanPackage = [mealPlan, packages !== "-" ? packages : ""]
+    .filter(Boolean)
+    .join(" · ") || "-";
+
   return `
     <div class="card-enter overflow-hidden rounded-3xl border bg-gradient-to-b ${statusTone}">
       <div class="flex items-start justify-between gap-3 p-4 pb-2">
         <div>
           <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Room</p>
-          <div class="text-5xl font-black tracking-tight text-slate-900">${escapeHtml(guest.roomNumber)}</div>
+          <div class="room-title text-slate-900">${escapeHtml(guest.roomNumber)}</div>
           <div class="mt-1 flex items-center gap-2 text-lg font-bold text-slate-700">
             <i class="fa-solid fa-user text-sm text-slate-400"></i>
             <span>${escapeHtml(guest.fullName || "-")}</span>
@@ -73,22 +79,29 @@ function guestPanelMarkup(guest) {
         </span>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 p-4 pt-2">
+      <div class="guest-detail-grid p-3 pt-1 sm:p-4 sm:pt-2">
         ${infoChip("fa-user-group", "Adults", String(guest.adults))}
         ${infoChip("fa-child", "Children", String(guest.children))}
-        ${infoChip("fa-utensils", "Meal Plan", guest.mealPlan || "-")}
-        ${infoChip("fa-box", "Package", listToText(guest.products))}
+        ${infoChip("fa-utensils", "Meal Plan / Package", mealPlanPackage, true)}
         ${infoChip("fa-calendar-check", "Arrival", formatDate(guest.arrival))}
         ${infoChip("fa-calendar-xmark", "Departure", formatDate(guest.departure))}
-        ${infoChip("fa-hashtag", "Confirmation", guest.confirmationNumber || "-")}
         ${infoChip("fa-mug-hot", "BF Qty", String(guest.breakfastQuantity))}
-        ${infoChip("fa-hotel", "Status", guest.reservationStatus || "-")}
-        ${infoChip("fa-tag", "Rate", guest.rateCode || "-")}
       </div>
 
-      <div class="border-t border-black/5 px-4 py-3 text-xs font-medium text-slate-500">
-        <i class="fa-solid fa-circle-info mr-1 text-slate-300"></i>
-        ${escapeHtml(listToText(guest.productDescriptions))}
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-black/5 px-4 py-3">
+        <p class="text-xs font-medium text-slate-500">
+          <i class="fa-solid fa-circle-info mr-1 text-slate-300"></i>
+          ${escapeHtml(listToText(guest.productDescriptions))}
+          ${guest.statusOverride ? '<span class="ml-1 font-bold text-amber-600">(FO Override)</span>' : ""}
+        </p>
+        <button
+          id="correctStatusButton"
+          class="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white transition active:scale-[0.97]"
+          type="button"
+        >
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span>Correct Status</span>
+        </button>
       </div>
     </div>
   `;
@@ -115,13 +128,42 @@ function checkInCardMarkup(record) {
 }
 
 function paymentCardMarkup(record) {
+  const paid = Boolean(record.paid);
+  const amountLabel = `${Number(record.amountAed || 0)} AED`;
+  const unitLabel = `${Number(record.unitPriceAed || 0)} × ${Number(record.chargeableGuests || 0)}`;
+
+  if (paid) {
+    return `
+      <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-extrabold text-success">
+            <i class="fa-solid fa-circle-check"></i>
+            Paid
+          </span>
+        </div>
+        <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
+        <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
+        <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+          <span><i class="fa-solid fa-chair mr-1 text-success"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <span>${escapeHtml(record.guestType || "")}</span>
+        </div>
+        <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="text-sm font-extrabold text-success">${escapeHtml(amountLabel)}</span>
+          <span class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</span>
+        </div>
+      </article>
+    `;
+  }
+
   return `
-    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press">
+    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-extrabold text-danger">
           <i class="fa-solid fa-receipt"></i>
-          Pay
+          Unpaid
         </span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
@@ -131,6 +173,20 @@ function paymentCardMarkup(record) {
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
+      <div class="mt-3 flex items-center justify-between gap-2">
+        <div>
+          <div class="text-lg font-black text-slate-900">${escapeHtml(amountLabel)}</div>
+          <div class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</div>
+        </div>
+        <button
+          class="pay-button inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-danger px-4 text-sm font-extrabold text-white transition active:scale-[0.97]"
+          type="button"
+          data-pay-id="${escapeHtml(record.id)}"
+        >
+          <i class="fa-solid fa-coins"></i>
+          Pay
+        </button>
+      </div>
     </article>
   `;
 }
@@ -161,6 +217,7 @@ export class BreakfastUI {
       checkInButton: document.querySelector("#checkInButton"),
       walkInButton: document.querySelector("#walkInButton"),
       apartmentButton: document.querySelector("#apartmentButton"),
+      manualGuestButton: document.querySelector("#manualGuestButton"),
       newDayButton: document.querySelector("#newDayButton"),
       exportTodayButton: document.querySelector("#exportTodayButton"),
       exportAccountingButton: document.querySelector("#exportAccountingButton"),
@@ -198,29 +255,54 @@ export class BreakfastUI {
 
   setFileStatus(type, loaded, fileName = "") {
     const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+    const mobileElement =
+      type === "mealPlan"
+        ? document.querySelector("#mobileMealPlanStatus")
+        : document.querySelector("#mobilePackageForecastStatus");
     const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
+    const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
 
-    if (loaded) {
-      element.className =
-        "file-status is-loaded inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-      element.textContent = `${label}: Loaded`;
+    const desktopClass = loaded
+      ? "file-status is-loaded inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold"
+      : "file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
+    const mobileClass = loaded
+      ? "file-status is-loaded rounded-xl px-3 py-2 text-center text-[11px] font-bold"
+      : "file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold";
+    const text = loaded ? `${label}: Loaded` : `${label}: Missing`;
+    const mobileText = loaded ? `${shortLabel}: Loaded` : `${shortLabel}: Missing`;
+
+    if (element) {
+      element.className = desktopClass;
+      element.textContent = text;
       element.title = fileName;
-      return;
     }
-
-    element.className =
-      "file-status is-missing inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-    element.textContent = `${label}: Missing`;
-    element.title = "";
+    if (mobileElement) {
+      mobileElement.className = mobileClass;
+      mobileElement.textContent = mobileText;
+      mobileElement.title = fileName;
+    }
   }
 
   setFileLoading(type, fileName = "") {
     const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+    const mobileElement =
+      type === "mealPlan"
+        ? document.querySelector("#mobileMealPlanStatus")
+        : document.querySelector("#mobilePackageForecastStatus");
     const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
-    element.className =
-      "file-status is-loading inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold";
-    element.textContent = `${label}: Reading...`;
-    element.title = fileName;
+    const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
+
+    if (element) {
+      element.className =
+        "file-status is-loading inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
+      element.textContent = `${label}: Reading...`;
+      element.title = fileName;
+    }
+    if (mobileElement) {
+      mobileElement.className = "file-status is-loading rounded-xl px-3 py-2 text-center text-[11px] font-bold";
+      mobileElement.textContent = `${shortLabel}: Reading...`;
+      mobileElement.title = fileName;
+    }
   }
 
   pushRecentRoom(guest) {
@@ -283,11 +365,13 @@ export class BreakfastUI {
   }
 
   updateStatistics(checkIns = [], payments = []) {
+    const unpaid = payments.filter((record) => !record.paid);
+
     if (this.elements.statCheckIns) {
       this.elements.statCheckIns.textContent = String(checkIns.length);
     }
     if (this.elements.statPayments) {
-      this.elements.statPayments.textContent = String(payments.length);
+      this.elements.statPayments.textContent = String(unpaid.length);
     }
     if (this.elements.statIncluded) {
       this.elements.statIncluded.textContent = String(
@@ -332,7 +416,7 @@ export class BreakfastUI {
   }
 
   renderMessage(message, tone = "info") {
-    this.elements.messageArea.className = `message-banner mb-3 shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold ${tone}`;
+    this.elements.messageArea.className = `message-banner mb-2 shrink-0 rounded-2xl px-3 py-2 text-sm font-semibold sm:mb-3 sm:px-4 sm:py-3 ${tone}`;
     this.elements.messageArea.textContent = message;
     this.elements.messageArea.hidden = !message;
 
@@ -351,6 +435,15 @@ export class BreakfastUI {
   setExportState(hasCheckIns, hasPayments) {
     this.elements.exportTodayButton.disabled = !hasCheckIns;
     this.elements.exportAccountingButton.disabled = !hasPayments;
+
+    const mobileExportToday = document.querySelector("#mobileExportTodayButton");
+    const mobileExportAccounting = document.querySelector("#mobileExportAccountingButton");
+    if (mobileExportToday) {
+      mobileExportToday.disabled = !hasCheckIns;
+    }
+    if (mobileExportAccounting) {
+      mobileExportAccounting.disabled = !hasPayments;
+    }
   }
 
   activateTab(targetName) {
@@ -359,6 +452,23 @@ export class BreakfastUI {
     });
     this.elements.tabPanels.forEach((panel) => {
       panel.hidden = panel.dataset.tabPanel !== targetName;
+    });
+    this.setMobileView(targetName);
+  }
+
+  setMobileView(viewName) {
+    const workspace = document.querySelector(".main-workspace");
+    if (workspace) {
+      workspace.classList.remove("mobile-view-search", "mobile-view-checkin", "mobile-view-checkins", "mobile-view-payments");
+      workspace.classList.add(`mobile-view-${viewName}`);
+    }
+
+    document.querySelectorAll("[data-mobile-view]").forEach((button) => {
+      const isSearch = button.dataset.mobileView === "search";
+      const active = button.dataset.mobileView === viewName;
+      if (isSearch) {
+        button.classList.toggle("is-active", active);
+      }
     });
   }
 
@@ -420,8 +530,29 @@ export class BreakfastUI {
       const body = `
         <form id="dynamicModalForm" class="modal-form">
           ${fields
-            .map(
-              (field) => `
+            .map((field) => {
+              if (field.type === "select") {
+                return `
+                  <label class="form-field">
+                    <span>${escapeHtml(field.label)}</span>
+                    <select name="${escapeHtml(field.name)}" ${field.required ? "required" : ""}>
+                      ${(field.options || [])
+                        .map(
+                          (option) => `
+                            <option value="${escapeHtml(option.value)}" ${
+                              String(option.value) === String(field.value || "") ? "selected" : ""
+                            }>
+                              ${escapeHtml(option.label)}
+                            </option>
+                          `
+                        )
+                        .join("")}
+                    </select>
+                  </label>
+                `;
+              }
+
+              return `
                 <label class="form-field">
                   <span>${escapeHtml(field.label)}</span>
                   <input
@@ -432,8 +563,8 @@ export class BreakfastUI {
                     ${field.required ? "required" : ""}
                   />
                 </label>
-              `
-            )
+              `;
+            })
             .join("")}
         </form>
       `;
@@ -466,8 +597,8 @@ export class BreakfastUI {
         ]
       });
 
-      const firstInput = this.elements.modal.querySelector("input");
-      firstInput?.focus();
+      const firstField = this.elements.modal.querySelector("input, select");
+      firstField?.focus();
     });
   }
 }

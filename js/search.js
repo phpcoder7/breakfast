@@ -66,8 +66,14 @@ export function renderSearchResults(results, query) {
   }
 
   return results
-    .map(
-      (guest, index) => `
+    .map((guest, index) => {
+      const mealPlan = guest.mealPlan && guest.mealPlan !== "-" ? guest.mealPlan : "";
+      const packages = Array.isArray(guest.products)
+        ? guest.products.filter(Boolean).join(", ")
+        : String(guest.products || "");
+      const mealPlanPackage = [mealPlan, packages].filter(Boolean).join(" · ") || "-";
+
+      return `
         <button
           class="search-result flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-left transition hover:bg-blue-50 active:scale-[0.99]"
           type="button"
@@ -76,11 +82,11 @@ export function renderSearchResults(results, query) {
           <span class="min-w-[4.5rem] text-2xl font-extrabold tracking-wide text-slate-900">${highlightMatch(guest.roomNumber, query)}</span>
           <span class="min-w-0 flex-1">
             <strong class="block truncate text-sm font-bold text-slate-800">${highlightMatch(guest.fullName, query)}</strong>
-            <span class="block truncate text-xs font-medium text-slate-400">${highlightMatch(guest.confirmationNumber, query)}</span>
+            <span class="block truncate text-xs font-medium text-slate-400">${escapeHtml(mealPlanPackage)}</span>
           </span>
           <i class="fa-solid fa-chevron-right text-slate-300"></i>
         </button>
-      `
-    )
+      `;
+    })
     .join("");
 }
