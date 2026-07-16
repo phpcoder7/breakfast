@@ -1,4 +1,4 @@
-import { createApartmentCheckIn, createHotelCheckIn, createWalkInCheckIn, checkEntitlement, detectDuplicate } from "./checkin.js";
+import { createApartmentCheckIn, createHotelCheckIn, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests } from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
 import { syncPaymentList } from "./payment.js";
@@ -156,7 +156,7 @@ class BreakfastApp {
     this.ui.renderPayments(paymentForTable);
     this.ui.setCheckInEnabled(this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast);
     this.ui.setExportState(Boolean(this.state.checkIns.length), Boolean(this.state.paymentList.length));
-    const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkins";
+    const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkin";
     this.ui.activateTab(activeTab);
   }
 
@@ -296,9 +296,10 @@ class BreakfastApp {
 
     const actualGuests = this.ui.elements.actualGuestsInput.value.trim();
     if (checkEntitlement(this.selectedGuest, actualGuests)) {
+      const extraGuests = getExtraGuests(this.selectedGuest, actualGuests);
       const confirmed = await this.ui.promptConfirm({
         title: "Breakfast Entitlement Exceeded",
-        message: "Breakfast entitlement exceeded. Do you want to continue?",
+        message: `Breakfast entitlement exceeded. ${extraGuests} extra guest(s) will be added to the payment list. Do you want to continue?`,
         confirmLabel: "Continue"
       });
       if (!confirmed) {
@@ -310,7 +311,10 @@ class BreakfastApp {
       tableNumber,
       actualGuests
     });
-    this.commitCheckIn(record, `${this.selectedGuest.roomNumber} checked in successfully.`, "success");
+    const successMessage = record.entitlementExceeded
+      ? `${this.selectedGuest.roomNumber} checked in successfully. ${record.extraGuests} extra guest(s) added to payment list.`
+      : `${this.selectedGuest.roomNumber} checked in successfully.`;
+    this.commitCheckIn(record, successMessage, "success");
   }
 
   async handleSpecialGuest(type) {
@@ -366,7 +370,7 @@ class BreakfastApp {
   async handleNewDay() {
     const confirmed = await this.ui.promptConfirm({
       title: "Start New Day",
-      message: "Delete today's check-ins and payment list? Uploaded XML files will remain loaded.",
+      message: "Delete today's check-ins, payment list, and unload both XML files? You will need to load new Meal Plan and Package Forecast files.",
       confirmLabel: "New Day",
       danger: true
     });
@@ -377,10 +381,51 @@ class BreakfastApp {
 
     this.state.checkIns = [];
     this.state.paymentList = [];
+    this.state.guests = [];
+    this.state.rawData = {
+      mealPlan: [],
+      packageForecast: []
+    };
+    this.state.filesLoaded = {
+      mealPlan: false,
+      packageForecast: false
+    };
+    this.state.fileNames = {
+      mealPlan: "",
+      packageForecast: ""
+    };
+    this.state.serviceDate = todayKey();
+
+    this.selectedGuest = null;
+    this.searchState.results = [];
+    this.searchState.activeIndex = -1;
+
+    if (this.ui.elements.mealPlanFile) {
+      this.ui.elements.mealPlanFile.value = "";
+    }
+    if (this.ui.elements.packageForecastFile) {
+      this.ui.elements.packageForecastFile.value = "";
+    }
+    if (this.ui.elements.tableNumberInput) {
+      this.ui.elements.tableNumberInput.value = "";
+    }
+    if (this.ui.elements.actualGuestsInput) {
+      this.ui.elements.actualGuestsInput.value = "";
+    }
+    if (this.ui.elements.searchInput) {
+      this.ui.elements.searchInput.value = "";
+    }
+
+    this.ui.clearSearchResults();
+    this.ui.renderGuest(null);
+    if (this.ui.recentRooms) {
+      this.ui.recentRooms = [];
+      this.ui.renderRecentSearches();
+    }
+
     this.persistState();
     this.refreshUi();
-    this.ui.renderMessage("Today's check-ins and payment list were cleared.", "success");
-    this.focusSearch();
+    this.ui.renderMessage("New day started. Please load both XML reports.", "success");
   }
 
   handleExportToday() {

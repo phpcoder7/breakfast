@@ -4,8 +4,18 @@ export function requiresPayment(record) {
   return (
     record.guestType === "Walk-In" ||
     record.guestType === "Apartment" ||
-    record.breakfastStatus === BREAKFAST_STATUS.PAYMENT
+    record.breakfastStatus === BREAKFAST_STATUS.PAYMENT ||
+    Boolean(record.entitlementExceeded)
   );
+}
+
+export function paymentReason(record) {
+  if (record.entitlementExceeded) {
+    const count = Number(record.extraGuests) || 0;
+    return `Extra guests (${count}) — entitlement exceeded`;
+  }
+
+  return reasonLabel(record.guestType, record.breakfastStatus);
 }
 
 export function createPaymentRecord(checkInRecord) {
@@ -16,7 +26,9 @@ export function createPaymentRecord(checkInRecord) {
     guestName: checkInRecord.guestName,
     tableNumber: checkInRecord.tableNumber,
     guestType: checkInRecord.guestType,
-    reason: reasonLabel(checkInRecord.guestType, checkInRecord.breakfastStatus)
+    reason: paymentReason(checkInRecord),
+    extraGuests: checkInRecord.extraGuests || 0,
+    entitlementExceeded: Boolean(checkInRecord.entitlementExceeded)
   };
 }
 

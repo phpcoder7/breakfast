@@ -40,7 +40,10 @@ export function searchGuests(guests, query, limit = 8) {
 
 export function exactRoomMatch(guests, query) {
   const variants = roomSearchVariants(query);
-  return guests.find((guest) => variants.includes(guest.roomNumber.replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber));
+  return guests.find(
+    (guest) =>
+      variants.includes(guest.roomNumber.replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber)
+  );
 }
 
 function highlightMatch(text, query) {
@@ -59,18 +62,23 @@ function highlightMatch(text, query) {
 
 export function renderSearchResults(results, query) {
   if (!results.length) {
-    return `<div class="search-empty">No matching guest found.</div>`;
+    return `<div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-400">No matching guest found.</div>`;
   }
 
   return results
     .map(
       (guest, index) => `
-        <button class="search-result" type="button" data-result-index="${index}">
-          <span class="search-room">${highlightMatch(guest.roomNumber, query)}</span>
-          <span class="search-meta">
-            <strong>${highlightMatch(guest.fullName, query)}</strong>
-            <span>${highlightMatch(guest.confirmationNumber, query)}</span>
+        <button
+          class="search-result flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-left transition hover:bg-blue-50 active:scale-[0.99]"
+          type="button"
+          data-result-index="${index}"
+        >
+          <span class="min-w-[4.5rem] text-2xl font-extrabold tracking-wide text-slate-900">${highlightMatch(guest.roomNumber, query)}</span>
+          <span class="min-w-0 flex-1">
+            <strong class="block truncate text-sm font-bold text-slate-800">${highlightMatch(guest.fullName, query)}</strong>
+            <span class="block truncate text-xs font-medium text-slate-400">${highlightMatch(guest.confirmationNumber, query)}</span>
           </span>
+          <i class="fa-solid fa-chevron-right text-slate-300"></i>
         </button>
       `
     )

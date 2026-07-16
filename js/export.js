@@ -40,7 +40,8 @@ export function exportAccountingReport(paymentList) {
     Guest: record.guestName,
     Table: record.tableNumber,
     "Guest Type": record.guestType,
-    Reason: record.reason
+    Reason: record.reason,
+    "Extra Guests": record.extraGuests || ""
   }));
 
   writeWorkbook(rows, `breakfast-accounting-${todayKey()}.xlsx`, "Accounting");

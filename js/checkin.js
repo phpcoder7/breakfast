@@ -20,7 +20,10 @@ function buildBaseRecord({
   guestType,
   actualGuests,
   confirmationNumber = "",
-  discount = ""
+  discount = "",
+  entitlementExceeded = false,
+  extraGuests = 0,
+  breakfastQuantity = 0
 }) {
   const timestamp = toTimestamp();
 
@@ -39,7 +42,10 @@ function buildBaseRecord({
     actualGuests,
     guestType,
     confirmationNumber,
-    discount
+    discount,
+    entitlementExceeded,
+    extraGuests,
+    breakfastQuantity
   };
 }
 
@@ -59,11 +65,24 @@ export function checkEntitlement(guest, actualGuests) {
   return parseInteger(actualGuests, 0) > parseInteger(guest.breakfastQuantity, 0);
 }
 
+export function getExtraGuests(guest, actualGuests) {
+  if (guest.breakfastStatus !== BREAKFAST_STATUS.INCLUDED) {
+    return 0;
+  }
+
+  const actual = parseInteger(actualGuests, 0);
+  const entitled = parseInteger(guest.breakfastQuantity, 0);
+  return Math.max(0, actual - entitled);
+}
+
 export function createHotelCheckIn(guest, formValues) {
   const actualGuests = parseInteger(
     formValues.actualGuests,
     parseInteger(guest.adults, 0) + parseInteger(guest.children, 0)
   );
+  const breakfastQuantity = parseInteger(guest.breakfastQuantity, 0);
+  const extraGuests = getExtraGuests(guest, actualGuests);
+  const entitlementExceeded = extraGuests > 0;
 
   return buildBaseRecord({
     roomNumber: guest.roomNumber,
@@ -76,7 +95,10 @@ export function createHotelCheckIn(guest, formValues) {
     breakfastStatus: guest.breakfastStatus,
     guestType: GUEST_TYPES.HOTEL,
     actualGuests,
-    confirmationNumber: guest.confirmationNumber
+    confirmationNumber: guest.confirmationNumber,
+    entitlementExceeded,
+    extraGuests,
+    breakfastQuantity
   });
 }
 

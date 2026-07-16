@@ -40,7 +40,7 @@ Login is stored for the current browser session only. Use `Logout` to sign out.
 
 ## New Day
 
-Use the `New Day` button at the start of breakfast service when you want to clear today's check-ins and payment list. The currently loaded XML guest list stays available until you upload new files.
+Use the `New Day` button at the start of breakfast service when you want to clear today's check-ins, payment list, and unload both XML files. You must load fresh Meal Plan and Package Forecast reports for the new day.
 
 ## Offline requirements
 
