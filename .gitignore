@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Daily OPERA reports (guest data — do not publish)
+*.xml
+*.XML
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Temporary verification files
+verify-data.js
+verify.html
+module-test.html
+fetch-test.html

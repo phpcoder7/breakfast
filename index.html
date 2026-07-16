@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Breakfast Check-in System</title>
+    <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="loginScreen" class="login-screen">
+      <form id="loginForm" class="login-card">
+        <p class="eyebrow">Hotel Restaurant Operations</p>
+        <h1>Breakfast Check-in System</h1>
+        <p class="login-subtitle">Sign in to continue</p>
+        <label class="form-field">
+          <span>Username</span>
+          <input id="loginUsername" type="text" autocomplete="username" required />
+        </label>
+        <label class="form-field">
+          <span>Password</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="loginError" class="login-error" hidden>Invalid username or password.</p>
+        <button class="btn btn-primary btn-block" type="submit">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          <span>Login</span>
+        </button>
+      </form>
+    </div>
+
+    <div class="app-shell" id="appShell" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Hotel Restaurant Operations</p>
+          <h1>Breakfast Check-in System</h1>
+        </div>
+        <div class="topbar-actions">
+          <input
+            id="mealPlanFile"
+            class="visually-hidden-input"
+            type="file"
+            accept=".xml,.XML,text/xml,application/xml"
+          />
+          <label for="mealPlanFile" class="file-button">
+            <i class="fa-solid fa-file-arrow-up"></i>
+            <span>Load Meal Plan XML</span>
+          </label>
+          <input
+            id="packageForecastFile"
+            class="visually-hidden-input"
+            type="file"
+            accept=".xml,.XML,text/xml,application/xml"
+          />
+          <label for="packageForecastFile" class="file-button">
+            <i class="fa-solid fa-file-arrow-up"></i>
+            <span>Load Package Forecast XML</span>
+          </label>
+          <button id="newDayButton" class="btn btn-secondary" type="button">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span>New Day</span>
+          </button>
+          <span id="currentUserBadge" class="user-badge"></span>
+          <button id="logoutButton" class="btn btn-secondary" type="button">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Logout</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <span id="mealPlanStatus" class="file-status is-missing">Meal Plan: Missing</span>
+        <span id="packageForecastStatus" class="file-status is-missing">Package Forecast: Missing</span>
+      </section>
+
+      <section id="startupError" class="message-banner error" hidden></section>
+      <section id="messageArea" class="message-banner" hidden></section>
+
+      <main class="dashboard">
+        <section class="left-column">
+          <section class="panel search-panel">
+            <div class="panel-heading">
+              <h2>Room Search</h2>
+              <p>Search by room, guest name, or confirmation number.</p>
+            </div>
+            <input
+              id="searchInput"
+              class="search-input"
+              type="text"
+              placeholder="Type room number, guest name, or confirmation number"
+              autocomplete="off"
+              disabled
+            />
+            <div id="searchResults" class="search-results"></div>
+          </section>
+
+          <section class="panel guest-panel">
+            <div class="panel-heading">
+              <h2>Room Information</h2>
+              <p>Breakfast entitlement and reservation details.</p>
+            </div>
+            <div id="guestPanel"></div>
+            <div class="checkin-form">
+              <label class="form-field">
+                <span>Table Number</span>
+                <input id="tableNumber" type="text" placeholder="Enter table number" disabled />
+              </label>
+              <label class="form-field">
+                <span>Actual Guests Eating</span>
+                <input id="actualGuests" type="number" min="0" placeholder="Optional" disabled />
+              </label>
+              <button id="checkInButton" class="btn btn-primary btn-block" type="button" disabled>
+                <i class="fa-solid fa-check"></i>
+                <span>Check In</span>
+              </button>
+            </div>
+          </section>
+        </section>
+
+        <aside class="right-column">
+          <section class="panel special-panel">
+            <div class="panel-heading">
+              <h2>Special Guest Types</h2>
+              <p>Use these entries for non-hotel breakfast guests.</p>
+            </div>
+            <div class="special-actions">
+              <button id="walkInButton" class="btn btn-danger" type="button">
+                <i class="fa-solid fa-user-plus"></i>
+                <span>Walk-In Guest</span>
+              </button>
+              <button id="apartmentButton" class="btn btn-danger" type="button">
+                <i class="fa-solid fa-building-user"></i>
+                <span>Apartment Guest</span>
+              </button>
+            </div>
+            <div class="special-card">
+              <h3>Keyboard Workflow</h3>
+              <ol>
+                <li>Type room number or guest name.</li>
+                <li>Press <kbd>Enter</kbd> to open the room.</li>
+                <li>Type table number and press <kbd>Enter</kbd>.</li>
+                <li>Cursor returns automatically to search.</li>
+              </ol>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <section class="panel activity-panel">
+        <div class="tab-bar">
+          <button class="tab-button is-active" type="button" data-tab-target="checkins">Today's Check-ins</button>
+          <button class="tab-button" type="button" data-tab-target="payments">Payment List</button>
+        </div>
+
+        <div data-tab-panel="checkins">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Room</th>
+                  <th>Guest</th>
+                  <th>Table</th>
+                  <th>Breakfast</th>
+                  <th>Meal Plan</th>
+                  <th>Package</th>
+                  <th>Guest Type</th>
+                </tr>
+              </thead>
+              <tbody id="checkinTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div data-tab-panel="payments" hidden>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Room / Apartment</th>
+                  <th>Guest Name</th>
+                  <th>Table</th>
+                  <th>Reason</th>
+                  <th>Guest Type</th>
+                </tr>
+              </thead>
+              <tbody id="paymentTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer-actions">
+        <button id="exportTodayButton" class="btn btn-secondary" type="button" disabled>
+          <i class="fa-solid fa-file-excel"></i>
+          <span>Export Today's Report</span>
+        </button>
+        <button id="exportAccountingButton" class="btn btn-secondary" type="button" disabled>
+          <i class="fa-solid fa-cash-register"></i>
+          <span>Export Accounting Report</span>
+        </button>
+      </footer>
+    </div>
+
+    <div id="modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h2 id="modalTitle"></h2>
+          <button class="icon-button" id="modalCloseButton" type="button">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+        <div id="modalActions" class="modal-actions"></div>
+      </div>
+    </div>
+
+    <script src="./vendor/xlsx.full.min.js"></script>
+    <script src="./js/app.bundle.js"></script>
+  </body>
+</html>

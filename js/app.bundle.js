@@ -1,0 +1,1371 @@
+(() => {
+  // js/utils.js
+  var BREAKFAST_CODES = {
+    BFAAD: "Breakfast Adult Add On Package",
+    BFAIN: "Breakfast Adult Included in Rate",
+    BFCAD: "Breakfast Child Add On Package",
+    BFCIN: "Breakfast Child Included in Rate",
+    UPSBB1: "Breakfast 1 Person",
+    WEB_BFSA: "Breakfast Adult",
+    BB: "Breakfast Package",
+    CLB: "Club Lounge (Breakfast Included)"
+  };
+  var NO_BREAKFAST_CODES = {
+    RO: "Room Only"
+  };
+  var BREAKFAST_STATUS = {
+    INCLUDED: "included",
+    PAYMENT: "payment",
+    UNKNOWN: "unknown"
+  };
+  var GUEST_TYPES = {
+    HOTEL: "Hotel",
+    WALK_IN: "Walk-In",
+    APARTMENT: "Apartment"
+  };
+  var STORAGE_KEYS = {
+    SNAPSHOT: "breakfast-checkin-state"
+  };
+  function normalizeText(value) {
+    return String(value ?? "").trim();
+  }
+  function normalizeCode(value) {
+    return normalizeText(value).toUpperCase();
+  }
+  function normalizeRoom(value) {
+    return normalizeText(value).replace(/\s+/g, "");
+  }
+  function normalizeSearchText(value) {
+    return normalizeText(value).toLowerCase();
+  }
+  function roomSearchVariants(value) {
+    const room = normalizeRoom(value);
+    if (!room) {
+      return [];
+    }
+    const trimmedZeros = room.replace(/^0+/, "");
+    return Array.from(/* @__PURE__ */ new Set([room, trimmedZeros || "0"]));
+  }
+  function parseInteger(value, fallback = 0) {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  function uniqueList(values) {
+    return Array.from(new Set(values.filter(Boolean)));
+  }
+  function todayKey() {
+    const now = /* @__PURE__ */ new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  function formatDate(value) {
+    const text = normalizeText(value);
+    if (!text) {
+      return "-";
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      const [year, month, day] = text.split("-");
+      return `${day}/${month}/${year}`;
+    }
+    const shortOracleDateMatch = text.match(/^(\d{2})-([A-Z]{3})-(\d{2})$/i);
+    if (shortOracleDateMatch) {
+      const [, day, month, year] = shortOracleDateMatch;
+      return `${day}/${month.toUpperCase()}/20${year}`;
+    }
+    return text;
+  }
+  function formatTime(value = /* @__PURE__ */ new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
+  function toTimestamp(value = /* @__PURE__ */ new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    return date.toISOString();
+  }
+  function safeJsonParse(value, fallback) {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return fallback;
+    }
+  }
+  function readStoredState() {
+    const snapshot = localStorage.getItem(STORAGE_KEYS.SNAPSHOT);
+    if (!snapshot) {
+      return null;
+    }
+    const parsed = safeJsonParse(snapshot, null);
+    if (!parsed || parsed.serviceDate !== todayKey()) {
+      return null;
+    }
+    return parsed;
+  }
+  function writeStoredState(state) {
+    localStorage.setItem(STORAGE_KEYS.SNAPSHOT, JSON.stringify(state));
+  }
+  function createId(prefix = "id") {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function escapeHtml(value) {
+    return normalizeText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function joinName(firstName, lastName) {
+    return normalizeText([firstName, lastName].filter(Boolean).join(" "));
+  }
+  function listToText(values) {
+    return uniqueList(values).join(", ") || "-";
+  }
+  function statusMeta(status) {
+    switch (status) {
+      case BREAKFAST_STATUS.INCLUDED:
+        return {
+          label: "Breakfast Included",
+          className: "status-included"
+        };
+      case BREAKFAST_STATUS.PAYMENT:
+        return {
+          label: "Payment Required",
+          className: "status-payment"
+        };
+      default:
+        return {
+          label: "Unknown Package",
+          className: "status-unknown"
+        };
+    }
+  }
+  function reasonLabel(guestType, breakfastStatus) {
+    if (guestType === GUEST_TYPES.WALK_IN) {
+      return "Walk-In";
+    }
+    if (guestType === GUEST_TYPES.APARTMENT) {
+      return "Apartment (20% discount)";
+    }
+    if (breakfastStatus === BREAKFAST_STATUS.PAYMENT) {
+      return "Payment Required";
+    }
+    return "Unknown Package";
+  }
+
+  // js/checkin.js
+  function buildBaseRecord({
+    roomNumber,
+    guestName,
+    adults,
+    children,
+    tableNumber,
+    mealPlan,
+    products,
+    breakfastStatus,
+    guestType,
+    actualGuests,
+    confirmationNumber = "",
+    discount = ""
+  }) {
+    const timestamp = toTimestamp();
+    return {
+      id: createId("checkin"),
+      timestamp,
+      timeLabel: formatTime(timestamp),
+      roomNumber,
+      guestName,
+      adults,
+      children,
+      tableNumber,
+      mealPlan,
+      products,
+      breakfastStatus,
+      actualGuests,
+      guestType,
+      confirmationNumber,
+      discount
+    };
+  }
+  function detectDuplicate(checkIns, guest) {
+    return checkIns.some(
+      (record) => record.guestType === GUEST_TYPES.HOTEL && record.roomNumber === guest.roomNumber
+    );
+  }
+  function checkEntitlement(guest, actualGuests) {
+    if (guest.breakfastStatus !== BREAKFAST_STATUS.INCLUDED) {
+      return false;
+    }
+    return parseInteger(actualGuests, 0) > parseInteger(guest.breakfastQuantity, 0);
+  }
+  function createHotelCheckIn(guest, formValues) {
+    const actualGuests = parseInteger(
+      formValues.actualGuests,
+      parseInteger(guest.adults, 0) + parseInteger(guest.children, 0)
+    );
+    return buildBaseRecord({
+      roomNumber: guest.roomNumber,
+      guestName: guest.fullName,
+      adults: guest.adults,
+      children: guest.children,
+      tableNumber: normalizeText(formValues.tableNumber),
+      mealPlan: guest.mealPlan,
+      products: guest.products.join(", "),
+      breakfastStatus: guest.breakfastStatus,
+      guestType: GUEST_TYPES.HOTEL,
+      actualGuests,
+      confirmationNumber: guest.confirmationNumber
+    });
+  }
+  function createWalkInCheckIn(formValues) {
+    return buildBaseRecord({
+      roomNumber: "Walk-In",
+      guestName: normalizeText(formValues.guestName) || "Walk-In Guest",
+      adults: parseInteger(formValues.adults, 1),
+      children: parseInteger(formValues.children, 0),
+      tableNumber: normalizeText(formValues.tableNumber),
+      mealPlan: "-",
+      products: "-",
+      breakfastStatus: BREAKFAST_STATUS.PAYMENT,
+      guestType: GUEST_TYPES.WALK_IN,
+      actualGuests: parseInteger(formValues.adults, 1) + parseInteger(formValues.children, 0)
+    });
+  }
+  function createApartmentCheckIn(formValues) {
+    return buildBaseRecord({
+      roomNumber: `APT ${normalizeText(formValues.apartmentNumber)}`,
+      guestName: normalizeText(formValues.guestName) || "Apartment Guest",
+      adults: parseInteger(formValues.adults, 1),
+      children: parseInteger(formValues.children, 0),
+      tableNumber: normalizeText(formValues.tableNumber),
+      mealPlan: "-",
+      products: "-",
+      breakfastStatus: BREAKFAST_STATUS.PAYMENT,
+      guestType: GUEST_TYPES.APARTMENT,
+      actualGuests: parseInteger(formValues.adults, 1) + parseInteger(formValues.children, 0),
+      discount: "20%"
+    });
+  }
+
+  // js/export.js
+  function ensureXlsx() {
+    if (!window.XLSX) {
+      throw new Error("Excel export library is not available offline.");
+    }
+    return window.XLSX;
+  }
+  function writeWorkbook(rows, fileName, sheetName) {
+    const XLSX = ensureXlsx();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    XLSX.writeFile(workbook, fileName);
+  }
+  function exportTodayReport(checkIns) {
+    const rows = checkIns.map((record) => ({
+      Time: record.timeLabel,
+      "Room Number": record.roomNumber,
+      "Guest Name": record.guestName,
+      Adults: record.adults,
+      Children: record.children,
+      Table: record.tableNumber,
+      "Meal Plan": record.mealPlan,
+      Package: record.products,
+      "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
+      "Guest Type": record.guestType
+    }));
+    writeWorkbook(rows, `breakfast-report-${todayKey()}.xlsx`, "Breakfast Report");
+  }
+  function exportAccountingReport(paymentList) {
+    const rows = paymentList.map((record) => ({
+      Time: record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "",
+      "Room / Apartment": record.displayLocation,
+      Guest: record.guestName,
+      Table: record.tableNumber,
+      "Guest Type": record.guestType,
+      Reason: record.reason
+    }));
+    writeWorkbook(rows, `breakfast-accounting-${todayKey()}.xlsx`, "Accounting");
+  }
+
+  // js/mergeData.js
+  function isBreakfastCode(code) {
+    return Boolean(BREAKFAST_CODES[normalizeCode(code)]);
+  }
+  function isNoBreakfastCode(code) {
+    return Boolean(NO_BREAKFAST_CODES[normalizeCode(code)]);
+  }
+  function aggregateForecastRows(forecastRows) {
+    const grouped = /* @__PURE__ */ new Map();
+    forecastRows.forEach((row) => {
+      const key = normalizeText(row.confirmationNumber) || `room:${normalizeRoom(row.roomNumber)}`;
+      const current = grouped.get(key) || {
+        confirmationNumber: normalizeText(row.confirmationNumber),
+        roomNumber: normalizeRoom(row.roomNumber),
+        firstName: row.firstName,
+        lastName: row.lastName,
+        adults: row.adults,
+        children: row.children,
+        reservationStatus: row.reservationStatus,
+        arrival: row.arrival,
+        departure: row.departure,
+        rateCode: row.rateCode,
+        products: [],
+        productDescriptions: [],
+        breakfastQuantity: 0,
+        packageQuantity: 0
+      };
+      current.products.push(...row.products || [], row.productGroupCode);
+      if (row.productDescription) {
+        current.productDescriptions.push(row.productDescription);
+      }
+      current.packageQuantity += row.packageQuantity || 0;
+      if (isBreakfastCode(row.productGroupCode)) {
+        current.breakfastQuantity += row.packageQuantity || 0;
+      }
+      current.reservationStatus = current.reservationStatus || row.reservationStatus;
+      current.rateCode = current.rateCode || row.rateCode;
+      grouped.set(key, current);
+    });
+    return grouped;
+  }
+  function breakfastDecision(mealPlan, products, breakfastQuantity, adults, children) {
+    const mealCode = normalizeCode(mealPlan);
+    const normalizedProducts = uniqueList(products.map((code) => normalizeCode(code)));
+    if (isNoBreakfastCode(mealCode)) {
+      return {
+        breakfastIncluded: false,
+        breakfastStatus: BREAKFAST_STATUS.PAYMENT,
+        breakfastQuantity: 0
+      };
+    }
+    if (isBreakfastCode(mealCode) || normalizedProducts.some(isBreakfastCode)) {
+      return {
+        breakfastIncluded: true,
+        breakfastStatus: BREAKFAST_STATUS.INCLUDED,
+        breakfastQuantity: breakfastQuantity || Math.max((adults || 0) + (children || 0), 0)
+      };
+    }
+    if (mealCode || normalizedProducts.length) {
+      return {
+        breakfastIncluded: false,
+        breakfastStatus: BREAKFAST_STATUS.UNKNOWN,
+        breakfastQuantity: 0
+      };
+    }
+    return {
+      breakfastIncluded: false,
+      breakfastStatus: BREAKFAST_STATUS.UNKNOWN,
+      breakfastQuantity: 0
+    };
+  }
+  function resolvePackageMatch(mealRow, forecastByConfirmation, forecastByRoom) {
+    const confirmationKey = normalizeText(mealRow.confirmationNumber);
+    if (confirmationKey && forecastByConfirmation.has(confirmationKey)) {
+      return forecastByConfirmation.get(confirmationKey);
+    }
+    const roomKey = normalizeRoom(mealRow.roomNumber);
+    if (roomKey && forecastByRoom.has(roomKey)) {
+      return forecastByRoom.get(roomKey);
+    }
+    return null;
+  }
+  function mergeGuestData(mealPlanRows, packageForecastRows) {
+    const forecastByConfirmation = aggregateForecastRows(
+      packageForecastRows.filter((row) => normalizeText(row.confirmationNumber))
+    );
+    const forecastByRoom = aggregateForecastRows(
+      packageForecastRows.filter((row) => normalizeRoom(row.roomNumber))
+    );
+    return mealPlanRows.map((mealRow) => {
+      const packageData = resolvePackageMatch(mealRow, forecastByConfirmation, forecastByRoom);
+      const products = uniqueList([
+        ...packageData?.products || [],
+        mealRow.mealPlan
+      ].map(normalizeCode));
+      const productDescriptions = uniqueList(packageData?.productDescriptions || []);
+      const fullName = joinName(mealRow.firstName, mealRow.lastName) || joinName(packageData?.firstName, packageData?.lastName);
+      const breakfast = breakfastDecision(
+        mealRow.mealPlan,
+        products,
+        packageData?.breakfastQuantity || 0,
+        mealRow.adults,
+        mealRow.children
+      );
+      return {
+        id: createId("guest"),
+        roomNumber: normalizeRoom(mealRow.roomNumber),
+        firstName: mealRow.firstName || packageData?.firstName || "",
+        lastName: mealRow.lastName || packageData?.lastName || "",
+        fullName,
+        arrival: mealRow.arrival || packageData?.arrival || "",
+        departure: mealRow.departure || packageData?.departure || "",
+        adults: mealRow.adults ?? packageData?.adults ?? 0,
+        children: mealRow.children ?? packageData?.children ?? 0,
+        confirmationNumber: normalizeText(mealRow.confirmationNumber || packageData?.confirmationNumber),
+        mealPlan: normalizeCode(mealRow.mealPlan),
+        products,
+        productDescriptions,
+        packageQuantity: packageData?.packageQuantity || 0,
+        reservationStatus: packageData?.reservationStatus || "CHECKED IN",
+        rateCode: packageData?.rateCode || "",
+        breakfastIncluded: breakfast.breakfastIncluded,
+        breakfastStatus: breakfast.breakfastStatus,
+        breakfastQuantity: breakfast.breakfastQuantity,
+        guestType: GUEST_TYPES.HOTEL
+      };
+    });
+  }
+
+  // js/payment.js
+  function requiresPayment(record) {
+    return record.guestType === "Walk-In" || record.guestType === "Apartment" || record.breakfastStatus === BREAKFAST_STATUS.PAYMENT;
+  }
+  function createPaymentRecord(checkInRecord) {
+    return {
+      id: checkInRecord.id,
+      timestamp: checkInRecord.timestamp,
+      displayLocation: checkInRecord.roomNumber,
+      guestName: checkInRecord.guestName,
+      tableNumber: checkInRecord.tableNumber,
+      guestType: checkInRecord.guestType,
+      reason: reasonLabel(checkInRecord.guestType, checkInRecord.breakfastStatus)
+    };
+  }
+  function syncPaymentList(checkIns) {
+    return checkIns.filter(requiresPayment).map((record) => createPaymentRecord(record));
+  }
+
+  // js/search.js
+  function includesRoom(guestRoom, query) {
+    const variants = roomSearchVariants(query);
+    return variants.some((variant) => guestRoom.includes(variant) || variant.includes(guestRoom));
+  }
+  function fullNameValue(guest) {
+    return [guest.firstName, guest.lastName].filter(Boolean).join(" ").trim();
+  }
+  function searchGuests(guests, query, limit = 8) {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) {
+      return [];
+    }
+    return guests.filter((guest) => {
+      const room = normalizeSearchText(guest.roomNumber);
+      const firstName = normalizeSearchText(guest.firstName);
+      const lastName = normalizeSearchText(guest.lastName);
+      const fullName = normalizeSearchText(fullNameValue(guest));
+      const confirmation = normalizeSearchText(guest.confirmationNumber);
+      return includesRoom(room, normalizedQuery) || firstName.includes(normalizedQuery) || lastName.includes(normalizedQuery) || fullName.includes(normalizedQuery) || confirmation.includes(normalizedQuery);
+    }).slice(0, limit);
+  }
+  function exactRoomMatch(guests, query) {
+    const variants = roomSearchVariants(query);
+    return guests.find((guest) => variants.includes(guest.roomNumber.replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber));
+  }
+  function highlightMatch(text, query) {
+    const source = String(text ?? "");
+    const normalizedSource = source.toLowerCase();
+    const normalizedQuery = query.toLowerCase();
+    const start = normalizedSource.indexOf(normalizedQuery);
+    if (start === -1 || !query) {
+      return escapeHtml(source);
+    }
+    const end = start + query.length;
+    return `${escapeHtml(source.slice(0, start))}<mark>${escapeHtml(source.slice(start, end))}</mark>${escapeHtml(source.slice(end))}`;
+  }
+  function renderSearchResults(results, query) {
+    if (!results.length) {
+      return `<div class="search-empty">No matching guest found.</div>`;
+    }
+    return results.map(
+      (guest, index) => `
+        <button class="search-result" type="button" data-result-index="${index}">
+          <span class="search-room">${highlightMatch(guest.roomNumber, query)}</span>
+          <span class="search-meta">
+            <strong>${highlightMatch(guest.fullName, query)}</strong>
+            <span>${highlightMatch(guest.confirmationNumber, query)}</span>
+          </span>
+        </button>
+      `
+    ).join("");
+  }
+
+  // js/ui.js
+  function renderDetailRow(label, value) {
+    return `
+    <div class="detail-row">
+      <span class="detail-label">${escapeHtml(label)}</span>
+      <span class="detail-value">${escapeHtml(value)}</span>
+    </div>
+  `;
+  }
+  function guestPanelMarkup(guest) {
+    if (!guest) {
+      return `
+      <div class="empty-panel">
+        <i class="fa-solid fa-mug-saucer"></i>
+        <p>Load both XML files and search for a room or guest to begin breakfast check-in.</p>
+      </div>
+    `;
+    }
+    const status = statusMeta(guest.breakfastStatus);
+    return `
+    <div class="guest-card">
+      <div class="guest-card-top">
+        <div>
+          <div class="room-title">${escapeHtml(guest.roomNumber)}</div>
+          <div class="guest-name">${escapeHtml(guest.fullName || "-")}</div>
+        </div>
+        <span class="status-pill ${status.className}">${escapeHtml(status.label)}</span>
+      </div>
+      <div class="detail-grid">
+        ${renderDetailRow("Arrival", formatDate(guest.arrival))}
+        ${renderDetailRow("Departure", formatDate(guest.departure))}
+        ${renderDetailRow("Adults", String(guest.adults))}
+        ${renderDetailRow("Children", String(guest.children))}
+        ${renderDetailRow("Confirmation", guest.confirmationNumber || "-")}
+        ${renderDetailRow("Meal Plan", guest.mealPlan || "-")}
+        ${renderDetailRow("Package Code(s)", listToText(guest.products))}
+        ${renderDetailRow("Package Description", listToText(guest.productDescriptions))}
+        ${renderDetailRow("Breakfast Included", guest.breakfastIncluded ? "Yes" : "No")}
+        ${renderDetailRow("Breakfast Quantity", String(guest.breakfastQuantity))}
+        ${renderDetailRow("Reservation Status", guest.reservationStatus || "-")}
+        ${renderDetailRow("Rate Code", guest.rateCode || "-")}
+      </div>
+    </div>
+  `;
+  }
+  function tableRowsMarkup(rows, columns, emptyMessage) {
+    if (!rows.length) {
+      return `<tr><td colspan="${columns.length}" class="empty-table">${escapeHtml(emptyMessage)}</td></tr>`;
+    }
+    return rows.map(
+      (row) => `
+        <tr>
+          ${columns.map((column) => `<td>${escapeHtml(row[column.key] ?? "")}</td>`).join("")}
+        </tr>
+      `
+    ).join("");
+  }
+  var BreakfastUI = class {
+    constructor() {
+      this.elements = {
+        mealPlanFile: document.querySelector("#mealPlanFile"),
+        packageForecastFile: document.querySelector("#packageForecastFile"),
+        mealPlanStatus: document.querySelector("#mealPlanStatus"),
+        packageForecastStatus: document.querySelector("#packageForecastStatus"),
+        searchInput: document.querySelector("#searchInput"),
+        searchResults: document.querySelector("#searchResults"),
+        guestPanel: document.querySelector("#guestPanel"),
+        tableNumberInput: document.querySelector("#tableNumber"),
+        actualGuestsInput: document.querySelector("#actualGuests"),
+        checkInButton: document.querySelector("#checkInButton"),
+        walkInButton: document.querySelector("#walkInButton"),
+        apartmentButton: document.querySelector("#apartmentButton"),
+        newDayButton: document.querySelector("#newDayButton"),
+        exportTodayButton: document.querySelector("#exportTodayButton"),
+        exportAccountingButton: document.querySelector("#exportAccountingButton"),
+        checkinTableBody: document.querySelector("#checkinTableBody"),
+        paymentTableBody: document.querySelector("#paymentTableBody"),
+        tabButtons: Array.from(document.querySelectorAll("[data-tab-target]")),
+        tabPanels: Array.from(document.querySelectorAll("[data-tab-panel]")),
+        messageArea: document.querySelector("#messageArea"),
+        modal: document.querySelector("#modal"),
+        modalTitle: document.querySelector("#modalTitle"),
+        modalBody: document.querySelector("#modalBody"),
+        modalActions: document.querySelector("#modalActions")
+      };
+    }
+    setFileStatus(type, loaded, fileName = "") {
+      const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+      const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
+      if (loaded) {
+        element.className = "file-status is-loaded";
+        element.textContent = `${label}: Loaded`;
+        element.title = fileName;
+        return;
+      }
+      element.className = "file-status is-missing";
+      element.textContent = `${label}: Missing`;
+      element.title = "";
+    }
+    setFileLoading(type, fileName = "") {
+      const element = type === "mealPlan" ? this.elements.mealPlanStatus : this.elements.packageForecastStatus;
+      const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
+      element.className = "file-status is-loading";
+      element.textContent = `${label}: Reading...`;
+      element.title = fileName;
+    }
+    renderGuest(guest) {
+      this.elements.guestPanel.innerHTML = guestPanelMarkup(guest);
+    }
+    renderSearch(results, query, activeIndex = -1) {
+      this.elements.searchResults.innerHTML = renderSearchResults(results, query);
+      const resultButtons = Array.from(this.elements.searchResults.querySelectorAll(".search-result"));
+      resultButtons.forEach((button, index) => {
+        button.classList.toggle("is-active", index === activeIndex);
+      });
+    }
+    clearSearchResults() {
+      this.elements.searchResults.innerHTML = "";
+    }
+    renderCheckIns(records) {
+      const columns = [
+        { key: "timeLabel", label: "Time" },
+        { key: "roomNumber", label: "Room" },
+        { key: "guestName", label: "Guest" },
+        { key: "tableNumber", label: "Table" },
+        { key: "breakfastLabel", label: "Breakfast" },
+        { key: "mealPlan", label: "Meal Plan" },
+        { key: "products", label: "Package" },
+        { key: "guestType", label: "Guest Type" }
+      ];
+      this.elements.checkinTableBody.innerHTML = tableRowsMarkup(records, columns, "No check-ins recorded yet.");
+    }
+    renderPayments(records) {
+      const columns = [
+        { key: "timeLabel", label: "Time" },
+        { key: "displayLocation", label: "Room / Apartment" },
+        { key: "guestName", label: "Guest Name" },
+        { key: "tableNumber", label: "Table" },
+        { key: "reason", label: "Reason" },
+        { key: "guestType", label: "Guest Type" }
+      ];
+      this.elements.paymentTableBody.innerHTML = tableRowsMarkup(records, columns, "No payment items queued.");
+    }
+    renderMessage(message, tone = "info") {
+      this.elements.messageArea.className = `message-banner ${tone}`;
+      this.elements.messageArea.textContent = message;
+      this.elements.messageArea.hidden = !message;
+    }
+    setCheckInEnabled(enabled) {
+      this.elements.searchInput.disabled = !enabled;
+      this.elements.tableNumberInput.disabled = !enabled;
+      this.elements.actualGuestsInput.disabled = !enabled;
+      this.elements.checkInButton.disabled = !enabled;
+    }
+    setExportState(hasCheckIns, hasPayments) {
+      this.elements.exportTodayButton.disabled = !hasCheckIns;
+      this.elements.exportAccountingButton.disabled = !hasPayments;
+    }
+    activateTab(targetName) {
+      this.elements.tabButtons.forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.tabTarget === targetName);
+      });
+      this.elements.tabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.tabPanel !== targetName;
+      });
+    }
+    openModal({ title, body, actions = [] }) {
+      this.elements.modalTitle.textContent = title;
+      this.elements.modalBody.innerHTML = body;
+      this.elements.modalActions.innerHTML = "";
+      actions.forEach((action) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `btn ${action.variant || "btn-secondary"}`;
+        button.textContent = action.label;
+        button.addEventListener("click", () => action.onClick());
+        this.elements.modalActions.appendChild(button);
+      });
+      this.elements.modal.hidden = false;
+      this.elements.modal.setAttribute("aria-hidden", "false");
+    }
+    closeModal() {
+      this.elements.modal.hidden = true;
+      this.elements.modal.setAttribute("aria-hidden", "true");
+      this.elements.modalTitle.textContent = "";
+      this.elements.modalBody.innerHTML = "";
+      this.elements.modalActions.innerHTML = "";
+    }
+    promptConfirm({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false }) {
+      return new Promise((resolve) => {
+        this.openModal({
+          title,
+          body: `<p>${escapeHtml(message)}</p>`,
+          actions: [
+            {
+              label: cancelLabel,
+              variant: "btn-secondary",
+              onClick: () => {
+                this.closeModal();
+                resolve(false);
+              }
+            },
+            {
+              label: confirmLabel,
+              variant: danger ? "btn-danger" : "btn-primary",
+              onClick: () => {
+                this.closeModal();
+                resolve(true);
+              }
+            }
+          ]
+        });
+      });
+    }
+    promptForm({ title, fields, submitLabel = "Save" }) {
+      return new Promise((resolve) => {
+        const body = `
+        <form id="dynamicModalForm" class="modal-form">
+          ${fields.map(
+          (field) => `
+                <label class="form-field">
+                  <span>${escapeHtml(field.label)}</span>
+                  <input
+                    type="${escapeHtml(field.type || "text")}"
+                    name="${escapeHtml(field.name)}"
+                    value="${escapeHtml(field.value || "")}"
+                    ${field.min !== void 0 ? `min="${escapeHtml(String(field.min))}"` : ""}
+                    ${field.required ? "required" : ""}
+                  />
+                </label>
+              `
+        ).join("")}
+        </form>
+      `;
+        this.openModal({
+          title,
+          body,
+          actions: [
+            {
+              label: "Cancel",
+              variant: "btn-secondary",
+              onClick: () => {
+                this.closeModal();
+                resolve(null);
+              }
+            },
+            {
+              label: submitLabel,
+              variant: "btn-primary",
+              onClick: () => {
+                const form = document.querySelector("#dynamicModalForm");
+                if (!form.reportValidity()) {
+                  return;
+                }
+                const formData = new FormData(form);
+                this.closeModal();
+                resolve(Object.fromEntries(formData.entries()));
+              }
+            }
+          ]
+        });
+        const firstInput = this.elements.modal.querySelector("input");
+        firstInput?.focus();
+      });
+    }
+  };
+
+  // js/auth.js
+  var USERS = {
+    KCA: "KCAadmin",
+    KTB: "KTBadmin"
+  };
+  var AUTH_KEY = "breakfast-auth-user";
+  function login(username, password) {
+    const normalizedUsername = String(username || "").trim().toUpperCase();
+    const expectedPassword = USERS[normalizedUsername];
+    if (!expectedPassword || expectedPassword !== password) {
+      return false;
+    }
+    sessionStorage.setItem(AUTH_KEY, normalizedUsername);
+    return true;
+  }
+  function logout() {
+    sessionStorage.removeItem(AUTH_KEY);
+  }
+  function isLoggedIn() {
+    return Boolean(sessionStorage.getItem(AUTH_KEY));
+  }
+  function getCurrentUser() {
+    return sessionStorage.getItem(AUTH_KEY) || "";
+  }
+
+  // js/xmlParser.js
+  var ROWSET_NS = "urn:schemas-microsoft-com:xml-analysis:rowset";
+  var XSD_NS = "http://www.w3.org/2001/XMLSchema";
+  var SAW_SQL_NS = "urn:saw-sql";
+  var MEAL_HEADING_MATCHERS = {
+    roomNumber: ["room"],
+    firstName: ["first name", "guest first name"],
+    lastName: ["last name", "guest last name"],
+    arrival: ["arrival"],
+    departure: ["departure"],
+    adults: ["adults", "adult"],
+    children: ["child", "children"],
+    confirmationNumber: ["confirmation number", "confirmation"],
+    mealPlan: ["meal plan"]
+  };
+  function parseXml(xmlText) {
+    const parser = new DOMParser();
+    const xmlDocument = parser.parseFromString(xmlText, "application/xml");
+    const parseError = xmlDocument.querySelector("parsererror");
+    if (parseError) {
+      throw new Error("Unable to read file. Please export a fresh report from OPERA.");
+    }
+    return xmlDocument;
+  }
+  function getRootName(xmlDocument) {
+    return xmlDocument.documentElement?.localName || xmlDocument.documentElement?.nodeName || "";
+  }
+  function requireFileType(xmlDocument, expectedRoot) {
+    if (getRootName(xmlDocument).toUpperCase() !== expectedRoot.toUpperCase()) {
+      throw new Error(`This doesn't look like a ${expectedRoot === "RS" ? "Meal Plan" : "Package Forecast"} report.`);
+    }
+  }
+  function getRowsetElements(xmlDocument, localName) {
+    return Array.from(xmlDocument.getElementsByTagNameNS(ROWSET_NS, localName));
+  }
+  function getSchemaElements(xmlDocument) {
+    return Array.from(xmlDocument.getElementsByTagNameNS(XSD_NS, "element"));
+  }
+  function normalizeHeading(heading) {
+    return normalizeText(heading).toLowerCase();
+  }
+  function mapMealColumns(xmlDocument) {
+    const schemaElements = getSchemaElements(xmlDocument);
+    const rawMappings = schemaElements.map((element) => ({
+      key: element.getAttribute("name"),
+      heading: element.getAttributeNS(SAW_SQL_NS, "columnHeading") || element.getAttribute("saw-sql:columnHeading") || ""
+    })).filter((entry) => entry.key && entry.heading);
+    const byField = {};
+    Object.entries(MEAL_HEADING_MATCHERS).forEach(([fieldName, candidates]) => {
+      const match = rawMappings.find(({ heading }) => {
+        const normalized = normalizeHeading(heading);
+        return candidates.some((candidate) => normalized.includes(candidate));
+      });
+      if (match) {
+        byField[fieldName] = match.key;
+      }
+    });
+    ["roomNumber", "confirmationNumber", "mealPlan"].forEach((requiredField) => {
+      if (!byField[requiredField]) {
+        throw new Error(`Required column not found: ${requiredField}. Contact IT if report format changed.`);
+      }
+    });
+    return byField;
+  }
+  function getChildText(parent, tagName) {
+    const node = Array.from(parent.children).find((child) => child.tagName === tagName || child.localName === tagName);
+    return normalizeText(node?.textContent);
+  }
+  function splitProducts(value) {
+    return normalizeText(value).split(",").map((part) => normalizeCode(part)).filter(Boolean);
+  }
+  function findAncestorByTagName(node, tagName) {
+    let current = node?.parentNode;
+    while (current) {
+      if (current.nodeType === 1 && (current.tagName === tagName || current.localName === tagName)) {
+        return current;
+      }
+      current = current.parentNode;
+    }
+    return null;
+  }
+  function parseMealPlanXml(xmlText) {
+    const xmlDocument = parseXml(xmlText);
+    requireFileType(xmlDocument, "RS");
+    const columnMap = mapMealColumns(xmlDocument);
+    const rowElements = getRowsetElements(xmlDocument, "R");
+    if (!rowElements.length) {
+      throw new Error("Unable to read file. Please export a fresh report from OPERA.");
+    }
+    return rowElements.map((rowElement) => {
+      const valueFor = (fieldName) => {
+        const columnName = columnMap[fieldName];
+        if (!columnName) {
+          return "";
+        }
+        const valueNode = Array.from(rowElement.children).find((child) => child.localName === columnName || child.tagName === columnName);
+        return normalizeText(valueNode?.textContent);
+      };
+      return {
+        roomNumber: normalizeRoom(valueFor("roomNumber")),
+        firstName: valueFor("firstName"),
+        lastName: valueFor("lastName"),
+        arrival: valueFor("arrival"),
+        departure: valueFor("departure"),
+        adults: parseInteger(valueFor("adults")),
+        children: parseInteger(valueFor("children")),
+        confirmationNumber: normalizeText(valueFor("confirmationNumber")),
+        mealPlan: normalizeCode(valueFor("mealPlan")),
+        source: "mealPlan"
+      };
+    });
+  }
+  function parsePackageForecastXml(xmlText) {
+    const xmlDocument = parseXml(xmlText);
+    requireFileType(xmlDocument, "PKGFORECAST");
+    const reservationNodes = Array.from(xmlDocument.getElementsByTagName("G_RESV_DETAILS"));
+    if (!reservationNodes.length) {
+      throw new Error("Unable to read file. Please export a fresh report from OPERA.");
+    }
+    return reservationNodes.map((reservationNode) => {
+      const productGroup = findAncestorByTagName(reservationNode, "G_PRODUCT_GROUP");
+      const productGroupCode = normalizeCode(getChildText(productGroup, "PRODUCT_ID1"));
+      const productDescription = getChildText(productGroup, "PRODUCT_DESC");
+      const displayName = getChildText(reservationNode, "DISPLAY_NAME");
+      const fallbackLastName = getChildText(reservationNode, "GUEST_NAME");
+      const firstName = getChildText(reservationNode, "GUEST_FIRST_NAME");
+      const lastName = displayName.includes(",") ? displayName.split(",")[0].trim() : fallbackLastName;
+      return {
+        confirmationNumber: normalizeText(getChildText(reservationNode, "CONFIRMATION_NO")),
+        roomNumber: normalizeRoom(getChildText(reservationNode, "ROOM")),
+        firstName,
+        lastName,
+        products: splitProducts(getChildText(reservationNode, "PRODUCTS")),
+        productGroupCode,
+        productDescription,
+        packageQuantity: parseInteger(getChildText(reservationNode, "PKG_QTY") || getChildText(reservationNode, "QUANTITY")),
+        adults: parseInteger(getChildText(reservationNode, "ADULTS")),
+        children: parseInteger(getChildText(reservationNode, "CHILDREN")),
+        reservationStatus: getChildText(reservationNode, "COMPUTED_RESV_STATUS") || getChildText(reservationNode, "RESV_STATUS"),
+        arrival: getChildText(reservationNode, "TRUNC_ARRIVAL"),
+        departure: getChildText(reservationNode, "TRUNC_DEPARTURE"),
+        rateCode: getChildText(reservationNode, "RATE_CODE"),
+        source: "packageForecast"
+      };
+    });
+  }
+
+  // js/app.js
+  var BreakfastApp = class {
+    constructor() {
+      this.ui = new BreakfastUI();
+      this.state = this.createInitialState();
+      this.searchState = {
+        results: [],
+        activeIndex: -1
+      };
+      this.selectedGuest = null;
+    }
+    createInitialState() {
+      const stored = readStoredState();
+      if (stored) {
+        return {
+          ...stored,
+          fileNames: stored.fileNames || {
+            mealPlan: "",
+            packageForecast: ""
+          }
+        };
+      }
+      return {
+        guests: [],
+        checkIns: [],
+        paymentList: [],
+        filesLoaded: {
+          mealPlan: false,
+          packageForecast: false
+        },
+        fileNames: {
+          mealPlan: "",
+          packageForecast: ""
+        },
+        rawData: {
+          mealPlan: [],
+          packageForecast: []
+        },
+        serviceDate: todayKey()
+      };
+    }
+    init() {
+      this.bindEvents();
+      this.refreshUi();
+    }
+    bindEvents() {
+      const { elements } = this.ui;
+      this.bindRequiredElement(elements.mealPlanFile, "mealPlanFile");
+      this.bindRequiredElement(elements.packageForecastFile, "packageForecastFile");
+      elements.mealPlanFile.addEventListener("change", (event) => {
+        this.handleFileUpload("mealPlan", event.target.files[0], event.target);
+      });
+      elements.packageForecastFile.addEventListener("change", (event) => {
+        this.handleFileUpload("packageForecast", event.target.files[0], event.target);
+      });
+      elements.searchInput.addEventListener("input", (event) => this.handleSearch(event.target.value));
+      elements.searchInput.addEventListener("keydown", (event) => this.handleSearchKeys(event));
+      elements.searchResults.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-result-index]");
+        if (!button) {
+          return;
+        }
+        const guest = this.searchState.results[Number(button.dataset.resultIndex)];
+        if (guest) {
+          this.selectGuest(guest);
+        }
+      });
+      elements.checkInButton.addEventListener("click", () => this.submitHotelCheckIn());
+      elements.tableNumberInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.submitHotelCheckIn();
+        }
+      });
+      elements.actualGuestsInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (elements.tableNumberInput.value.trim()) {
+            this.submitHotelCheckIn();
+          } else {
+            elements.tableNumberInput.focus();
+          }
+        }
+      });
+      elements.walkInButton.addEventListener("click", () => this.handleSpecialGuest("walkIn"));
+      elements.apartmentButton.addEventListener("click", () => this.handleSpecialGuest("apartment"));
+      elements.newDayButton.addEventListener("click", () => this.handleNewDay());
+      elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
+      elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
+      document.querySelector("#modalCloseButton").addEventListener("click", () => {
+        this.ui.closeModal();
+        this.focusSearch();
+      });
+      elements.tabButtons.forEach((button) => {
+        button.addEventListener("click", () => this.ui.activateTab(button.dataset.tabTarget));
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !this.ui.elements.modal.hidden) {
+          this.ui.closeModal();
+          this.focusSearch();
+        }
+      });
+    }
+    bindRequiredElement(element, name) {
+      if (!element) {
+        throw new Error(`Missing interface element: ${name}`);
+      }
+    }
+    persistState() {
+      writeStoredState(this.state);
+    }
+    refreshUi() {
+      this.ui.setFileStatus("mealPlan", this.state.filesLoaded.mealPlan, this.state.fileNames?.mealPlan || "");
+      this.ui.setFileStatus("packageForecast", this.state.filesLoaded.packageForecast, this.state.fileNames?.packageForecast || "");
+      this.ui.renderGuest(this.selectedGuest);
+      const checkInsForTable = this.state.checkIns.map((record) => ({
+        ...record,
+        breakfastLabel: statusMeta(record.breakfastStatus).label
+      }));
+      const paymentForTable = this.state.paymentList.map((record) => ({
+        ...record,
+        timeLabel: record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""
+      }));
+      this.ui.renderCheckIns(checkInsForTable);
+      this.ui.renderPayments(paymentForTable);
+      this.ui.setCheckInEnabled(this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast);
+      this.ui.setExportState(Boolean(this.state.checkIns.length), Boolean(this.state.paymentList.length));
+      const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkins";
+      this.ui.activateTab(activeTab);
+    }
+    async handleFileUpload(type, file, inputElement) {
+      if (!file) {
+        return;
+      }
+      this.ui.setFileLoading(type, file.name);
+      this.ui.renderMessage(`Reading ${file.name}...`, "info");
+      try {
+        const text = await file.text();
+        if (type === "mealPlan") {
+          this.state.rawData.mealPlan = parseMealPlanXml(text);
+        } else {
+          this.state.rawData.packageForecast = parsePackageForecastXml(text);
+        }
+        this.state.filesLoaded[type] = true;
+        this.state.fileNames[type] = file.name;
+        if (this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast) {
+          this.state.guests = mergeGuestData(this.state.rawData.mealPlan, this.state.rawData.packageForecast);
+          this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service.`, "success");
+        } else {
+          this.ui.renderMessage(`${type === "mealPlan" ? "Meal Plan" : "Package Forecast"} loaded. Please load the second XML report.`, "info");
+        }
+        this.persistState();
+        this.refreshUi();
+        this.focusSearch();
+      } catch (error) {
+        this.state.filesLoaded[type] = false;
+        this.state.fileNames[type] = "";
+        this.refreshUi();
+        this.ui.renderMessage(error.message, "error");
+      } finally {
+        if (inputElement) {
+          inputElement.value = "";
+        }
+      }
+    }
+    handleSearch(query) {
+      if (!this.state.guests.length) {
+        this.ui.renderMessage("Please load both XML reports before checking in guests.", "warning");
+        return;
+      }
+      if (!query.trim()) {
+        this.searchState.results = [];
+        this.searchState.activeIndex = -1;
+        this.ui.clearSearchResults();
+        return;
+      }
+      this.searchState.results = searchGuests(this.state.guests, query);
+      this.searchState.activeIndex = this.searchState.results.length ? 0 : -1;
+      this.ui.renderSearch(this.searchState.results, query, this.searchState.activeIndex);
+    }
+    handleSearchKeys(event) {
+      if (!this.searchState.results.length && event.key === "Enter") {
+        const guest = exactRoomMatch(this.state.guests, event.target.value);
+        if (guest) {
+          event.preventDefault();
+          this.selectGuest(guest);
+        } else {
+          this.ui.renderMessage("Guest not found. Check room number or use Walk-In.", "warning");
+        }
+        return;
+      }
+      if (!this.searchState.results.length) {
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        this.searchState.activeIndex = (this.searchState.activeIndex + 1) % this.searchState.results.length;
+        this.ui.renderSearch(this.searchState.results, event.target.value, this.searchState.activeIndex);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        this.searchState.activeIndex = (this.searchState.activeIndex - 1 + this.searchState.results.length) % this.searchState.results.length;
+        this.ui.renderSearch(this.searchState.results, event.target.value, this.searchState.activeIndex);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const exactGuest = exactRoomMatch(this.state.guests, event.target.value);
+        const guest = exactGuest || this.searchState.results[this.searchState.activeIndex] || this.searchState.results[0];
+        if (guest) {
+          this.selectGuest(guest);
+        } else {
+          this.ui.renderMessage("Guest not found. Check room number or use Walk-In.", "warning");
+        }
+      }
+    }
+    selectGuest(guest) {
+      this.selectedGuest = guest;
+      this.ui.renderGuest(guest);
+      this.ui.clearSearchResults();
+      this.ui.elements.tableNumberInput.focus();
+    }
+    async submitHotelCheckIn() {
+      if (!this.selectedGuest) {
+        this.ui.renderMessage("Select a guest before checking in.", "warning");
+        return;
+      }
+      const tableNumber = this.ui.elements.tableNumberInput.value.trim();
+      if (!tableNumber) {
+        this.ui.renderMessage("Table number is required.", "warning");
+        this.ui.elements.tableNumberInput.focus();
+        return;
+      }
+      if (detectDuplicate(this.state.checkIns, this.selectedGuest)) {
+        const confirmed = await this.ui.promptConfirm({
+          title: "Duplicate Check-In",
+          message: "Room already checked in today. Do you want to override and continue?",
+          confirmLabel: "Override"
+        });
+        if (!confirmed) {
+          this.focusSearch();
+          return;
+        }
+      }
+      const actualGuests = this.ui.elements.actualGuestsInput.value.trim();
+      if (checkEntitlement(this.selectedGuest, actualGuests)) {
+        const confirmed = await this.ui.promptConfirm({
+          title: "Breakfast Entitlement Exceeded",
+          message: "Breakfast entitlement exceeded. Do you want to continue?",
+          confirmLabel: "Continue"
+        });
+        if (!confirmed) {
+          return;
+        }
+      }
+      const record = createHotelCheckIn(this.selectedGuest, {
+        tableNumber,
+        actualGuests
+      });
+      this.commitCheckIn(record, `${this.selectedGuest.roomNumber} checked in successfully.`, "success");
+    }
+    async handleSpecialGuest(type) {
+      const formValues = type === "walkIn" ? await this.ui.promptForm({
+        title: "Walk-In Guest",
+        submitLabel: "Check In",
+        fields: [
+          { name: "guestName", label: "Guest Name" },
+          { name: "adults", label: "Adults", type: "number", min: 0, value: "1", required: true },
+          { name: "children", label: "Children", type: "number", min: 0, value: "0", required: true },
+          { name: "tableNumber", label: "Table Number", required: true }
+        ]
+      }) : await this.ui.promptForm({
+        title: "Apartment Guest",
+        submitLabel: "Check In",
+        fields: [
+          { name: "apartmentNumber", label: "Apartment Number", required: true },
+          { name: "guestName", label: "Guest Name" },
+          { name: "adults", label: "Adults", type: "number", min: 0, value: "1", required: true },
+          { name: "children", label: "Children", type: "number", min: 0, value: "0", required: true },
+          { name: "tableNumber", label: "Table Number", required: true }
+        ]
+      });
+      if (!formValues) {
+        this.focusSearch();
+        return;
+      }
+      const record = type === "walkIn" ? createWalkInCheckIn(formValues) : createApartmentCheckIn(formValues);
+      this.commitCheckIn(record, `${record.guestType} guest checked in successfully.`, "success");
+    }
+    commitCheckIn(record, message, tone) {
+      this.state.checkIns.unshift(record);
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.ui.renderMessage(message, tone);
+      this.ui.elements.tableNumberInput.value = "";
+      this.ui.elements.actualGuestsInput.value = "";
+      this.ui.elements.searchInput.value = "";
+      this.selectedGuest = null;
+      this.searchState.results = [];
+      this.searchState.activeIndex = -1;
+      this.ui.clearSearchResults();
+      this.refreshUi();
+      this.focusSearch();
+    }
+    async handleNewDay() {
+      const confirmed = await this.ui.promptConfirm({
+        title: "Start New Day",
+        message: "Delete today's check-ins and payment list? Uploaded XML files will remain loaded.",
+        confirmLabel: "New Day",
+        danger: true
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.state.checkIns = [];
+      this.state.paymentList = [];
+      this.persistState();
+      this.refreshUi();
+      this.ui.renderMessage("Today's check-ins and payment list were cleared.", "success");
+      this.focusSearch();
+    }
+    handleExportToday() {
+      try {
+        exportTodayReport(this.state.checkIns);
+        this.ui.renderMessage("Today's report exported successfully.", "success");
+      } catch (error) {
+        this.ui.renderMessage(error.message, "error");
+      }
+    }
+    handleExportAccounting() {
+      try {
+        exportAccountingReport(this.state.paymentList);
+        this.ui.renderMessage("Accounting report exported successfully.", "success");
+      } catch (error) {
+        this.ui.renderMessage(error.message, "error");
+      }
+    }
+    focusSearch() {
+      this.ui.elements.searchInput.focus();
+    }
+  };
+  function showLoginScreen() {
+    const loginScreen = document.querySelector("#loginScreen");
+    const appShell = document.querySelector("#appShell");
+    const loginError = document.querySelector("#loginError");
+    const loginPassword = document.querySelector("#loginPassword");
+    if (loginScreen) {
+      loginScreen.hidden = false;
+    }
+    if (appShell) {
+      appShell.hidden = true;
+    }
+    if (loginError) {
+      loginError.hidden = true;
+    }
+    if (loginPassword) {
+      loginPassword.value = "";
+    }
+    document.querySelector("#loginUsername")?.focus();
+  }
+  function showAppScreen() {
+    const loginScreen = document.querySelector("#loginScreen");
+    const appShell = document.querySelector("#appShell");
+    const userBadge = document.querySelector("#currentUserBadge");
+    if (loginScreen) {
+      loginScreen.hidden = true;
+    }
+    if (appShell) {
+      appShell.hidden = false;
+    }
+    if (userBadge) {
+      userBadge.textContent = `User: ${getCurrentUser()}`;
+    }
+  }
+  function bindLoginForm() {
+    const loginForm = document.querySelector("#loginForm");
+    const loginError = document.querySelector("#loginError");
+    if (!loginForm) {
+      throw new Error("Missing login form");
+    }
+    loginForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const username = document.querySelector("#loginUsername")?.value || "";
+      const password = document.querySelector("#loginPassword")?.value || "";
+      if (login(username, password)) {
+        if (loginError) {
+          loginError.hidden = true;
+        }
+        launchBreakfastApp();
+        return;
+      }
+      if (loginError) {
+        loginError.hidden = false;
+      }
+      document.querySelector("#loginPassword")?.focus();
+    });
+  }
+  function bindLogoutButton() {
+    document.querySelector("#logoutButton")?.addEventListener("click", () => {
+      logout();
+      window.breakfastApp = null;
+      showLoginScreen();
+    });
+  }
+  function launchBreakfastApp() {
+    showAppScreen();
+    if (!window.breakfastApp) {
+      const app = new BreakfastApp();
+      app.init();
+      window.breakfastApp = app;
+    }
+  }
+  function showStartupError(message) {
+    const banner = document.querySelector("#startupError");
+    if (!banner) {
+      return;
+    }
+    banner.hidden = false;
+    banner.textContent = message;
+  }
+  function startApp() {
+    try {
+      bindLoginForm();
+      bindLogoutButton();
+      if (isLoggedIn()) {
+        launchBreakfastApp();
+      } else {
+        showLoginScreen();
+      }
+    } catch (error) {
+      showStartupError(`Application failed to start: ${error.message}`);
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp);
+  } else {
+    startApp();
+  }
+})();
