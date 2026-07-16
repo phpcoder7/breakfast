@@ -525,7 +525,7 @@ class BreakfastApp {
     this.ui.renderMessage(`Status corrected for room ${this.selectedGuest.roomNumber}.`, "success");
   }
 
-  async handleMarkPaid(paymentId) {
+  handleMarkPaid(paymentId) {
     if (!paymentId) {
       return;
     }
@@ -535,21 +535,11 @@ class BreakfastApp {
       return;
     }
 
-    const confirmed = await this.ui.promptConfirm({
-      title: "Confirm Payment",
-      message: `Mark ${payment.displayLocation} — ${payment.guestName} as paid (${payment.amountAed} AED)?`,
-      confirmLabel: "Mark Paid"
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
     this.state.checkIns = markPaymentPaid(this.state.checkIns, paymentId);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
     this.refreshUi();
-    this.ui.renderMessage(`Payment recorded for ${payment.displayLocation} (${payment.amountAed} AED).`, "success");
+    this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
   }
 
   commitCheckIn(record, message, tone) {

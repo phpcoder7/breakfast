@@ -129,8 +129,6 @@ function checkInCardMarkup(record) {
 
 function paymentCardMarkup(record) {
   const paid = Boolean(record.paid);
-  const amountLabel = `${Number(record.amountAed || 0)} AED`;
-  const unitLabel = `${Number(record.unitPriceAed || 0)} × ${Number(record.chargeableGuests || 0)}`;
 
   if (paid) {
     return `
@@ -149,10 +147,6 @@ function paymentCardMarkup(record) {
           <span>${escapeHtml(record.guestType || "")}</span>
         </div>
         <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
-        <div class="mt-3 flex items-center justify-between gap-2">
-          <span class="text-sm font-extrabold text-success">${escapeHtml(amountLabel)}</span>
-          <span class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</span>
-        </div>
       </article>
     `;
   }
@@ -173,18 +167,14 @@ function paymentCardMarkup(record) {
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
-      <div class="mt-3 flex items-center justify-between gap-2">
-        <div>
-          <div class="text-lg font-black text-slate-900">${escapeHtml(amountLabel)}</div>
-          <div class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</div>
-        </div>
+      <div class="mt-3 flex justify-end">
         <button
           class="pay-button inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-danger px-4 text-sm font-extrabold text-white transition active:scale-[0.97]"
           type="button"
           data-pay-id="${escapeHtml(record.id)}"
         >
-          <i class="fa-solid fa-coins"></i>
-          Pay
+          <i class="fa-solid fa-circle-check"></i>
+          Paid
         </button>
       </div>
     </article>

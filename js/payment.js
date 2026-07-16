@@ -30,7 +30,14 @@ export function chargeableGuests(record) {
     return Number(record.extraGuests) || 0;
   }
 
-  return Number(record.actualGuests) || 0;
+  const actual = Number(record.actualGuests);
+  if (Number.isFinite(actual) && actual > 0) {
+    return actual;
+  }
+
+  const adults = Number(record.adults) || 0;
+  const children = Number(record.children) || 0;
+  return Math.max(0, adults + children);
 }
 
 export function unitPriceAed(record) {

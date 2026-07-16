@@ -492,7 +492,13 @@
     if (record.entitlementExceeded) {
       return Number(record.extraGuests) || 0;
     }
-    return Number(record.actualGuests) || 0;
+    const actual = Number(record.actualGuests);
+    if (Number.isFinite(actual) && actual > 0) {
+      return actual;
+    }
+    const adults = Number(record.adults) || 0;
+    const children = Number(record.children) || 0;
+    return Math.max(0, adults + children);
   }
   function unitPriceAed(record) {
     return record.guestType === GUEST_TYPES.APARTMENT ? APARTMENT_PRICE_AED : BREAKFAST_PRICE_AED;
@@ -705,8 +711,6 @@
   }
   function paymentCardMarkup(record) {
     const paid = Boolean(record.paid);
-    const amountLabel = `${Number(record.amountAed || 0)} AED`;
-    const unitLabel = `${Number(record.unitPriceAed || 0)} \xD7 ${Number(record.chargeableGuests || 0)}`;
     if (paid) {
       return `
       <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
@@ -724,10 +728,6 @@
           <span>${escapeHtml(record.guestType || "")}</span>
         </div>
         <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
-        <div class="mt-3 flex items-center justify-between gap-2">
-          <span class="text-sm font-extrabold text-success">${escapeHtml(amountLabel)}</span>
-          <span class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</span>
-        </div>
       </article>
     `;
     }
@@ -747,18 +747,14 @@
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
-      <div class="mt-3 flex items-center justify-between gap-2">
-        <div>
-          <div class="text-lg font-black text-slate-900">${escapeHtml(amountLabel)}</div>
-          <div class="text-[11px] font-bold text-slate-400">${escapeHtml(unitLabel)}</div>
-        </div>
+      <div class="mt-3 flex justify-end">
         <button
           class="pay-button inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-danger px-4 text-sm font-extrabold text-white transition active:scale-[0.97]"
           type="button"
           data-pay-id="${escapeHtml(record.id)}"
         >
-          <i class="fa-solid fa-coins"></i>
-          Pay
+          <i class="fa-solid fa-circle-check"></i>
+          Paid
         </button>
       </div>
     </article>
@@ -1738,7 +1734,7 @@
       this.ui.renderGuest(this.selectedGuest);
       this.ui.renderMessage(`Status corrected for room ${this.selectedGuest.roomNumber}.`, "success");
     }
-    async handleMarkPaid(paymentId) {
+    handleMarkPaid(paymentId) {
       if (!paymentId) {
         return;
       }
@@ -1746,19 +1742,11 @@
       if (!payment || payment.paid) {
         return;
       }
-      const confirmed = await this.ui.promptConfirm({
-        title: "Confirm Payment",
-        message: `Mark ${payment.displayLocation} \u2014 ${payment.guestName} as paid (${payment.amountAed} AED)?`,
-        confirmLabel: "Mark Paid"
-      });
-      if (!confirmed) {
-        return;
-      }
       this.state.checkIns = markPaymentPaid(this.state.checkIns, paymentId);
       this.state.paymentList = syncPaymentList(this.state.checkIns);
       this.persistState();
       this.refreshUi();
-      this.ui.renderMessage(`Payment recorded for ${payment.displayLocation} (${payment.amountAed} AED).`, "success");
+      this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
     }
     commitCheckIn(record, message, tone) {
       this.state.checkIns.unshift(record);
