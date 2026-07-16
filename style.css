@@ -25,6 +25,12 @@ body {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
+.app-brand-logo {
+  /* White SVG artwork rendered dark on the light header */
+  filter: brightness(0) saturate(100%);
+  opacity: 0.92;
+}
+
 .header-actions {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
