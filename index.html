@@ -5,8 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Breakfast Check-in</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./assets/favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#2563EB" />
+    <meta name="application-name" content="Breakfast Check-in" />
+    <meta name="apple-mobile-web-app-title" content="Breakfast" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -390,5 +395,14 @@
 
     <script src="./vendor/xlsx.full.min.js"></script>
     <script src="./js/app.bundle.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+            console.warn("Service worker registration failed:", error);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
