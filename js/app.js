@@ -145,6 +145,12 @@ class BreakfastApp {
       const editTableButton = event.target.closest("[data-edit-table-id]");
       if (editTableButton) {
         this.handleChangeTable(editTableButton.dataset.editTableId);
+        return;
+      }
+
+      const checkoutButton = event.target.closest("[data-checkout-id]");
+      if (checkoutButton) {
+        this.handleCheckOut(checkoutButton.dataset.checkoutId);
       }
     });
     elements.guestPanel?.addEventListener("click", (event) => {
@@ -671,6 +677,40 @@ class BreakfastApp {
     this.persistState();
     this.refreshUi();
     this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
+  }
+
+  async handleCheckOut(checkInId) {
+    if (!checkInId) {
+      return;
+    }
+
+    const record = this.state.checkIns.find((item) => item.id === checkInId);
+    if (!record || record.checkedOut) {
+      return;
+    }
+
+    const roomLabel = record.roomNumber || record.guestType || "Guest";
+    const guestPart = record.guestName ? ` — ${record.guestName}` : "";
+    const tableLabel = record.tableNumber || "-";
+    const confirmed = await this.ui.promptConfirm({
+      title: "Check Out",
+      message: `Check out ${roomLabel}${guestPart} and free Table ${tableLabel}?`,
+      confirmLabel: "Check Out",
+      danger: true
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.state.checkIns = checkOutCheckIn(this.state.checkIns, checkInId);
+    this.state.paymentList = syncPaymentList(this.state.checkIns);
+    this.persistState();
+    this.refreshUi();
+    this.ui.renderMessage(
+      `${roomLabel} checked out. Table ${tableLabel} is free.`,
+      "success"
+    );
   }
 
   async handleChangeTable(checkInId) {

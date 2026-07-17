@@ -1,4 +1,4 @@
-import { todayKey } from "./utils.js";
+import { formatTime, todayKey } from "./utils.js";
 
 function ensureXlsx() {
   if (!window.XLSX) {
@@ -28,7 +28,9 @@ export function exportTodayReport(checkIns) {
     Package: record.products,
     "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
     "Guest Type": record.guestType,
-    "FO Override": record.statusOverride ? "Yes" : "No"
+    "FO Override": record.statusOverride ? "Yes" : "No",
+    "Checked Out": record.checkedOut ? "Yes" : "No",
+    "Check Out Time": record.checkedOutAt ? formatTime(record.checkedOutAt) : ""
   }));
 
   writeWorkbook(rows, `breakfast-report-${todayKey()}.xlsx`, "Breakfast Report");

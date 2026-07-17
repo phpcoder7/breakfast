@@ -1,6 +1,7 @@
 import {
   escapeHtml,
   formatDate,
+  formatTime,
   listToText,
   statusMeta
 } from "./utils.js";
@@ -117,28 +118,48 @@ function checkInCardMarkup(record) {
   const cardClass = record.checkedOut
     ? "bg-slate-100 opacity-70"
     : "bg-slate-50 hover:bg-white hover:shadow-card";
+  const checkOutTime = record.checkedOutAt ? formatTime(record.checkedOutAt) : "";
+  const timeLine = record.checkedOut
+    ? `${escapeHtml(record.timeLabel || "")}${checkOutTime ? ` · Out ${escapeHtml(checkOutTime)}` : ""}`
+    : escapeHtml(record.timeLabel || "");
 
   return `
     <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
-        <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
+        <span class="text-xs font-bold text-slate-400">${timeLine}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.roomNumber || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
       <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
         <button
-          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50 ${record.checkedOut ? "pointer-events-none opacity-60" : ""}"
           type="button"
           data-edit-table-id="${escapeHtml(record.id)}"
           title="Change table number"
+          ${record.checkedOut ? "disabled" : ""}
         >
           <i class="fa-solid fa-chair text-primary"></i>
           <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
-          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+          ${record.checkedOut ? "" : '<i class="fa-solid fa-pen text-[10px] text-slate-400"></i>'}
         </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
+      ${
+        record.checkedOut
+          ? ""
+          : `
+      <div class="mt-3 flex justify-end">
+        <button
+          class="inline-flex h-10 min-h-touch items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-extrabold text-white transition active:scale-[0.97]"
+          type="button"
+          data-checkout-id="${escapeHtml(record.id)}"
+        >
+          <i class="fa-solid fa-door-open"></i>
+          Check Out
+        </button>
+      </div>`
+      }
     </article>
   `;
 }

@@ -396,7 +396,9 @@
       Package: record.products,
       "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
       "Guest Type": record.guestType,
-      "FO Override": record.statusOverride ? "Yes" : "No"
+      "FO Override": record.statusOverride ? "Yes" : "No",
+      "Checked Out": record.checkedOut ? "Yes" : "No",
+      "Check Out Time": record.checkedOutAt ? formatTime(record.checkedOutAt) : ""
     }));
     writeWorkbook(rows, `breakfast-report-${todayKey()}.xlsx`, "Breakfast Report");
   }
@@ -821,27 +823,41 @@
     const badgeClass = record.checkedOut ? "bg-slate-200 text-slate-600" : statusBadgeClass(record.breakfastStatus, record.guestType);
     const badgeLabel = record.checkedOut ? "Checked out" : statusBadgeLabel(record.breakfastStatus, record.guestType);
     const cardClass = record.checkedOut ? "bg-slate-100 opacity-70" : "bg-slate-50 hover:bg-white hover:shadow-card";
+    const checkOutTime = record.checkedOutAt ? formatTime(record.checkedOutAt) : "";
+    const timeLine = record.checkedOut ? `${escapeHtml(record.timeLabel || "")}${checkOutTime ? ` \xB7 Out ${escapeHtml(checkOutTime)}` : ""}` : escapeHtml(record.timeLabel || "");
     return `
     <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
-        <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
+        <span class="text-xs font-bold text-slate-400">${timeLine}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.roomNumber || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
       <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
         <button
-          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50 ${record.checkedOut ? "pointer-events-none opacity-60" : ""}"
           type="button"
           data-edit-table-id="${escapeHtml(record.id)}"
           title="Change table number"
+          ${record.checkedOut ? "disabled" : ""}
         >
           <i class="fa-solid fa-chair text-primary"></i>
           <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
-          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+          ${record.checkedOut ? "" : '<i class="fa-solid fa-pen text-[10px] text-slate-400"></i>'}
         </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
+      ${record.checkedOut ? "" : `
+      <div class="mt-3 flex justify-end">
+        <button
+          class="inline-flex h-10 min-h-touch items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-extrabold text-white transition active:scale-[0.97]"
+          type="button"
+          data-checkout-id="${escapeHtml(record.id)}"
+        >
+          <i class="fa-solid fa-door-open"></i>
+          Check Out
+        </button>
+      </div>`}
     </article>
   `;
   }
@@ -1557,6 +1573,11 @@
         const editTableButton = event.target.closest("[data-edit-table-id]");
         if (editTableButton) {
           this.handleChangeTable(editTableButton.dataset.editTableId);
+          return;
+        }
+        const checkoutButton = event.target.closest("[data-checkout-id]");
+        if (checkoutButton) {
+          this.handleCheckOut(checkoutButton.dataset.checkoutId);
         }
       });
       elements.guestPanel?.addEventListener("click", (event) => {
@@ -2004,6 +2025,35 @@
       this.persistState();
       this.refreshUi();
       this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
+    }
+    async handleCheckOut(checkInId) {
+      if (!checkInId) {
+        return;
+      }
+      const record = this.state.checkIns.find((item) => item.id === checkInId);
+      if (!record || record.checkedOut) {
+        return;
+      }
+      const roomLabel = record.roomNumber || record.guestType || "Guest";
+      const guestPart = record.guestName ? ` \u2014 ${record.guestName}` : "";
+      const tableLabel = record.tableNumber || "-";
+      const confirmed = await this.ui.promptConfirm({
+        title: "Check Out",
+        message: `Check out ${roomLabel}${guestPart} and free Table ${tableLabel}?`,
+        confirmLabel: "Check Out",
+        danger: true
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.state.checkIns = checkOutCheckIn(this.state.checkIns, checkInId);
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.refreshUi();
+      this.ui.renderMessage(
+        `${roomLabel} checked out. Table ${tableLabel} is free.`,
+        "success"
+      );
     }
     async handleChangeTable(checkInId) {
       if (!checkInId) {
