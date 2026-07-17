@@ -367,8 +367,10 @@ class BreakfastApp {
   }
 
   async handleLateArrivals(existingCheckIn, tableNumber) {
+    const currentTable = existingCheckIn.tableNumber || "-";
     const formValues = await this.ui.promptForm({
       title: `Late Arrivals — Room ${existingCheckIn.roomNumber}`,
+      message: `Current table for earlier guests: ${currentTable}`,
       submitLabel: "Add Arrivals",
       fields: [
         {
@@ -418,7 +420,7 @@ class BreakfastApp {
       ? ` Payment list updated (${updated.extraGuests} extra guest(s)).`
       : "";
     this.ui.renderMessage(
-      `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s).${extrasNote}`,
+      `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s). Current table ${updated.tableNumber}.${extrasNote}`,
       "success"
     );
   }

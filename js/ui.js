@@ -546,9 +546,13 @@ export class BreakfastUI {
     });
   }
 
-  promptForm({ title, fields, submitLabel = "Save" }) {
+  promptForm({ title, fields, submitLabel = "Save", message = "" }) {
     return new Promise((resolve) => {
+      const messageHtml = message
+        ? `<p class="mb-4 text-sm font-semibold leading-relaxed text-slate-600">${escapeHtml(message)}</p>`
+        : "";
       const body = `
+        ${messageHtml}
         <form id="dynamicModalForm" class="modal-form">
           ${fields
             .map((field) => {

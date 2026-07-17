@@ -94,7 +94,6 @@ export function applyLateArrivals(record, { additionalGuests, tableNumber }) {
   const previousActual = parseInteger(record.actualGuests, 0);
   const nextActual = previousActual + added;
   const breakfastQuantity = parseInteger(record.breakfastQuantity, 0);
-  const previousExtras = parseInteger(record.extraGuests, 0);
 
   let extraGuests = 0;
   let entitlementExceeded = false;
@@ -105,8 +104,6 @@ export function applyLateArrivals(record, { additionalGuests, tableNumber }) {
   }
 
   const nextTable = normalizeText(tableNumber) || record.tableNumber;
-  const extrasIncreased = extraGuests > previousExtras;
-  const resetPaid = extrasIncreased && Boolean(record.paid);
 
   return {
     ...record,
@@ -114,8 +111,8 @@ export function applyLateArrivals(record, { additionalGuests, tableNumber }) {
     tableNumber: nextTable,
     extraGuests,
     entitlementExceeded,
-    paid: resetPaid ? false : Boolean(record.paid),
-    paidAt: resetPaid ? "" : record.paidAt || "",
+    paid: false,
+    paidAt: "",
     lateArrivalAdded: added
   };
 }

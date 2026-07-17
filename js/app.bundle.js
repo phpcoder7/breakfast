@@ -227,7 +227,6 @@
     const previousActual = parseInteger(record.actualGuests, 0);
     const nextActual = previousActual + added;
     const breakfastQuantity = parseInteger(record.breakfastQuantity, 0);
-    const previousExtras = parseInteger(record.extraGuests, 0);
     let extraGuests = 0;
     let entitlementExceeded = false;
     if (record.breakfastStatus === BREAKFAST_STATUS.INCLUDED) {
@@ -235,16 +234,14 @@
       entitlementExceeded = extraGuests > 0;
     }
     const nextTable = normalizeText(tableNumber) || record.tableNumber;
-    const extrasIncreased = extraGuests > previousExtras;
-    const resetPaid = extrasIncreased && Boolean(record.paid);
     return {
       ...record,
       actualGuests: nextActual,
       tableNumber: nextTable,
       extraGuests,
       entitlementExceeded,
-      paid: resetPaid ? false : Boolean(record.paid),
-      paidAt: resetPaid ? "" : record.paidAt || "",
+      paid: false,
+      paidAt: "",
       lateArrivalAdded: added
     };
   }
@@ -1169,9 +1166,11 @@
         });
       });
     }
-    promptForm({ title, fields, submitLabel = "Save" }) {
+    promptForm({ title, fields, submitLabel = "Save", message = "" }) {
       return new Promise((resolve) => {
+        const messageHtml = message ? `<p class="mb-4 text-sm font-semibold leading-relaxed text-slate-600">${escapeHtml(message)}</p>` : "";
         const body = `
+        ${messageHtml}
         <form id="dynamicModalForm" class="modal-form">
           ${fields.map((field) => {
           if (field.type === "select") {
@@ -1728,8 +1727,10 @@
       this.commitCheckIn(record, successMessage, "success");
     }
     async handleLateArrivals(existingCheckIn, tableNumber) {
+      const currentTable = existingCheckIn.tableNumber || "-";
       const formValues = await this.ui.promptForm({
         title: `Late Arrivals \u2014 Room ${existingCheckIn.roomNumber}`,
+        message: `Current table for earlier guests: ${currentTable}`,
         submitLabel: "Add Arrivals",
         fields: [
           {
@@ -1771,7 +1772,7 @@
       this.focusSearch();
       const extrasNote = updated.entitlementExceeded ? ` Payment list updated (${updated.extraGuests} extra guest(s)).` : "";
       this.ui.renderMessage(
-        `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s).${extrasNote}`,
+        `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s). Current table ${updated.tableNumber}.${extrasNote}`,
         "success"
       );
     }
