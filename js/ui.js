@@ -574,6 +574,23 @@ export class BreakfastUI {
     });
   }
 
+  promptChoice({ title, message, choices = [] }) {
+    return new Promise((resolve) => {
+      this.openModal({
+        title,
+        body: `<p class="text-base leading-relaxed">${escapeHtml(message)}</p>`,
+        actions: choices.map((choice) => ({
+          label: choice.label,
+          variant: choice.variant || "btn-secondary",
+          onClick: () => {
+            this.closeModal();
+            resolve(choice.id);
+          }
+        }))
+      });
+    });
+  }
+
   promptForm({ title, fields, submitLabel = "Save", message = "" }) {
     return new Promise((resolve) => {
       const messageHtml = message

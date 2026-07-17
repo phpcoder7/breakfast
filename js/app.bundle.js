@@ -211,14 +211,14 @@
   function normalizeTable(tableNumber) {
     return normalizeText(tableNumber).replace(/\s+/g, "").toUpperCase();
   }
-  function findActiveCheckInByTable(checkIns, tableNumber, excludeCheckInId = "") {
+  function findActiveCheckInsByTable(checkIns, tableNumber, excludeCheckInId = "") {
     const table = normalizeTable(tableNumber);
     if (!table) {
-      return null;
+      return [];
     }
-    return checkIns.find(
+    return checkIns.filter(
       (record) => record.id !== excludeCheckInId && record.checkedOut !== true && normalizeTable(record.tableNumber) === table
-    ) || null;
+    );
   }
   function checkOutCheckIn(checkIns, checkInId) {
     if (!checkInId) {
@@ -1211,6 +1211,22 @@
         });
       });
     }
+    promptChoice({ title, message, choices = [] }) {
+      return new Promise((resolve) => {
+        this.openModal({
+          title,
+          body: `<p class="text-base leading-relaxed">${escapeHtml(message)}</p>`,
+          actions: choices.map((choice) => ({
+            label: choice.label,
+            variant: choice.variant || "btn-secondary",
+            onClick: () => {
+              this.closeModal();
+              resolve(choice.id);
+            }
+          }))
+        });
+      });
+    }
     promptForm({ title, fields, submitLabel = "Save", message = "" }) {
       return new Promise((resolve) => {
         const messageHtml = message ? `<p class="mb-4 text-sm font-semibold leading-relaxed text-slate-600">${escapeHtml(message)}</p>` : "";
@@ -1782,25 +1798,38 @@
       this.commitCheckIn(record, successMessage, "success");
     }
     async ensureTableAvailable(tableNumber, excludeCheckInId = "") {
-      const occupant = findActiveCheckInByTable(
+      const occupants = findActiveCheckInsByTable(
         this.state.checkIns,
         tableNumber,
         excludeCheckInId
       );
-      if (!occupant) {
+      if (!occupants.length) {
         return true;
       }
-      const occupantLabel = `${occupant.roomNumber || occupant.guestType || "Guest"}${occupant.guestName ? ` \u2014 ${occupant.guestName}` : ""}`;
-      const confirmed = await this.ui.promptConfirm({
+      const occupantLabel = occupants.map((occupant) => {
+        const room = occupant.roomNumber || occupant.guestType || "Guest";
+        return occupant.guestName ? `${room} \u2014 ${occupant.guestName}` : room;
+      }).join("; ");
+      const choice = await this.ui.promptChoice({
         title: `Table ${tableNumber} Is Occupied`,
-        message: `Table ${tableNumber} is occupied by ${occupantLabel}. Check out that party to free the table?`,
-        confirmLabel: "Check Out & Continue",
-        danger: true
+        message: `Table ${tableNumber} is occupied by ${occupantLabel}. Sit together at the same table, or check out the current party first?`,
+        choices: [
+          { id: "cancel", label: "Cancel", variant: "btn-secondary" },
+          { id: "share", label: "Sit together", variant: "btn-primary" },
+          { id: "checkout", label: "Check Out & Continue", variant: "btn-danger" }
+        ]
       });
-      if (!confirmed) {
+      if (choice === "share") {
+        return true;
+      }
+      if (choice !== "checkout") {
         return false;
       }
-      this.state.checkIns = checkOutCheckIn(this.state.checkIns, occupant.id);
+      let nextCheckIns = this.state.checkIns;
+      for (const occupant of occupants) {
+        nextCheckIns = checkOutCheckIn(nextCheckIns, occupant.id);
+      }
+      this.state.checkIns = nextCheckIns;
       this.state.paymentList = syncPaymentList(this.state.checkIns);
       this.persistState();
       this.refreshUi();

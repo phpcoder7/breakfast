@@ -78,20 +78,22 @@ export function normalizeTable(tableNumber) {
   return normalizeText(tableNumber).replace(/\s+/g, "").toUpperCase();
 }
 
-export function findActiveCheckInByTable(checkIns, tableNumber, excludeCheckInId = "") {
+export function findActiveCheckInsByTable(checkIns, tableNumber, excludeCheckInId = "") {
   const table = normalizeTable(tableNumber);
   if (!table) {
-    return null;
+    return [];
   }
 
-  return (
-    checkIns.find(
-      (record) =>
-        record.id !== excludeCheckInId &&
-        record.checkedOut !== true &&
-        normalizeTable(record.tableNumber) === table
-    ) || null
+  return checkIns.filter(
+    (record) =>
+      record.id !== excludeCheckInId &&
+      record.checkedOut !== true &&
+      normalizeTable(record.tableNumber) === table
   );
+}
+
+export function findActiveCheckInByTable(checkIns, tableNumber, excludeCheckInId = "") {
+  return findActiveCheckInsByTable(checkIns, tableNumber, excludeCheckInId)[0] || null;
 }
 
 export function checkOutCheckIn(checkIns, checkInId) {

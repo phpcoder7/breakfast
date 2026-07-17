@@ -6,7 +6,7 @@ import {
   createHotelCheckIn,
   createManualGuest,
   createWalkInCheckIn,
-  findActiveCheckInByTable,
+  findActiveCheckInsByTable,
   findHotelCheckInByRoom,
   getExtraGuests,
   normalizeTable,
@@ -392,30 +392,45 @@ class BreakfastApp {
   }
 
   async ensureTableAvailable(tableNumber, excludeCheckInId = "") {
-    const occupant = findActiveCheckInByTable(
+    const occupants = findActiveCheckInsByTable(
       this.state.checkIns,
       tableNumber,
       excludeCheckInId
     );
-    if (!occupant) {
+    if (!occupants.length) {
       return true;
     }
 
-    const occupantLabel = `${occupant.roomNumber || occupant.guestType || "Guest"}${
-      occupant.guestName ? ` — ${occupant.guestName}` : ""
-    }`;
-    const confirmed = await this.ui.promptConfirm({
+    const occupantLabel = occupants
+      .map((occupant) => {
+        const room = occupant.roomNumber || occupant.guestType || "Guest";
+        return occupant.guestName ? `${room} — ${occupant.guestName}` : room;
+      })
+      .join("; ");
+
+    const choice = await this.ui.promptChoice({
       title: `Table ${tableNumber} Is Occupied`,
-      message: `Table ${tableNumber} is occupied by ${occupantLabel}. Check out that party to free the table?`,
-      confirmLabel: "Check Out & Continue",
-      danger: true
+      message: `Table ${tableNumber} is occupied by ${occupantLabel}. Sit together at the same table, or check out the current party first?`,
+      choices: [
+        { id: "cancel", label: "Cancel", variant: "btn-secondary" },
+        { id: "share", label: "Sit together", variant: "btn-primary" },
+        { id: "checkout", label: "Check Out & Continue", variant: "btn-danger" }
+      ]
     });
 
-    if (!confirmed) {
+    if (choice === "share") {
+      return true;
+    }
+
+    if (choice !== "checkout") {
       return false;
     }
 
-    this.state.checkIns = checkOutCheckIn(this.state.checkIns, occupant.id);
+    let nextCheckIns = this.state.checkIns;
+    for (const occupant of occupants) {
+      nextCheckIns = checkOutCheckIn(nextCheckIns, occupant.id);
+    }
+    this.state.checkIns = nextCheckIns;
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
     this.refreshUi();
