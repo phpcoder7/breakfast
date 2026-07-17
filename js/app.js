@@ -1,4 +1,4 @@
-import { createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests, updateCheckInTableNumber } from "./checkin.js";
+import { applyLateArrivals, createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, findHotelCheckInByRoom, getExtraGuests, updateCheckInTableNumber } from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
@@ -337,16 +337,10 @@ class BreakfastApp {
       return;
     }
 
-    if (detectDuplicate(this.state.checkIns, this.selectedGuest)) {
-      const confirmed = await this.ui.promptConfirm({
-        title: "Duplicate Check-In",
-        message: "Room already checked in today. Do you want to override and continue?",
-        confirmLabel: "Override"
-      });
-      if (!confirmed) {
-        this.focusSearch();
-        return;
-      }
+    const existingCheckIn = findHotelCheckInByRoom(this.state.checkIns, this.selectedGuest.roomNumber);
+    if (existingCheckIn) {
+      await this.handleLateArrivals(existingCheckIn, tableNumber);
+      return;
     }
 
     const actualGuests = this.ui.elements.actualGuestsInput.value.trim();
@@ -370,6 +364,63 @@ class BreakfastApp {
       ? `${this.selectedGuest.roomNumber} checked in successfully. ${record.extraGuests} extra guest(s) added to payment list.`
       : `${this.selectedGuest.roomNumber} checked in successfully.`;
     this.commitCheckIn(record, successMessage, "success");
+  }
+
+  async handleLateArrivals(existingCheckIn, tableNumber) {
+    const formValues = await this.ui.promptForm({
+      title: `Late Arrivals — Room ${existingCheckIn.roomNumber}`,
+      submitLabel: "Add Arrivals",
+      fields: [
+        {
+          name: "additionalGuests",
+          label: "Additional guests arriving now",
+          type: "number",
+          min: 1,
+          value: "1",
+          required: true
+        }
+      ]
+    });
+
+    if (!formValues) {
+      this.focusSearch();
+      return;
+    }
+
+    const additionalGuests = parseInteger(formValues.additionalGuests, 0);
+    if (additionalGuests < 1) {
+      this.ui.renderMessage("Enter at least 1 additional guest.", "warning");
+      return;
+    }
+
+    const updated = applyLateArrivals(existingCheckIn, {
+      additionalGuests,
+      tableNumber
+    });
+
+    this.state.checkIns = this.state.checkIns.map((record) =>
+      record.id === existingCheckIn.id ? updated : record
+    );
+    this.state.paymentList = syncPaymentList(this.state.checkIns);
+    this.persistState();
+
+    this.ui.elements.tableNumberInput.value = "";
+    this.ui.elements.actualGuestsInput.value = "";
+    this.ui.elements.searchInput.value = "";
+    this.selectedGuest = null;
+    this.searchState.results = [];
+    this.searchState.activeIndex = -1;
+    this.ui.clearSearchResults();
+    this.refreshUi();
+    this.focusSearch();
+
+    const extrasNote = updated.entitlementExceeded
+      ? ` Payment list updated (${updated.extraGuests} extra guest(s)).`
+      : "";
+    this.ui.renderMessage(
+      `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s).${extrasNote}`,
+      "success"
+    );
   }
 
   async handleSpecialGuest(type) {

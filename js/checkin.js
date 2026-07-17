@@ -55,10 +55,19 @@ function buildBaseRecord({
 }
 
 export function detectDuplicate(checkIns, guest) {
-  return checkIns.some(
-    (record) =>
-      record.guestType === GUEST_TYPES.HOTEL &&
-      record.roomNumber === guest.roomNumber
+  return Boolean(findHotelCheckInByRoom(checkIns, guest.roomNumber));
+}
+
+export function findHotelCheckInByRoom(checkIns, roomNumber) {
+  const room = normalizeRoom(roomNumber);
+  if (!room) {
+    return null;
+  }
+
+  return (
+    checkIns.find(
+      (record) => record.guestType === GUEST_TYPES.HOTEL && normalizeRoom(record.roomNumber) === room
+    ) || null
   );
 }
 
@@ -78,6 +87,37 @@ export function getExtraGuests(guest, actualGuests) {
   const actual = parseInteger(actualGuests, 0);
   const entitled = parseInteger(guest.breakfastQuantity, 0);
   return Math.max(0, actual - entitled);
+}
+
+export function applyLateArrivals(record, { additionalGuests, tableNumber }) {
+  const added = Math.max(1, parseInteger(additionalGuests, 1));
+  const previousActual = parseInteger(record.actualGuests, 0);
+  const nextActual = previousActual + added;
+  const breakfastQuantity = parseInteger(record.breakfastQuantity, 0);
+  const previousExtras = parseInteger(record.extraGuests, 0);
+
+  let extraGuests = 0;
+  let entitlementExceeded = false;
+
+  if (record.breakfastStatus === BREAKFAST_STATUS.INCLUDED) {
+    extraGuests = Math.max(0, nextActual - breakfastQuantity);
+    entitlementExceeded = extraGuests > 0;
+  }
+
+  const nextTable = normalizeText(tableNumber) || record.tableNumber;
+  const extrasIncreased = extraGuests > previousExtras;
+  const resetPaid = extrasIncreased && Boolean(record.paid);
+
+  return {
+    ...record,
+    actualGuests: nextActual,
+    tableNumber: nextTable,
+    extraGuests,
+    entitlementExceeded,
+    paid: resetPaid ? false : Boolean(record.paid),
+    paidAt: resetPaid ? "" : record.paidAt || "",
+    lateArrivalAdded: added
+  };
 }
 
 export function createHotelCheckIn(guest, formValues) {

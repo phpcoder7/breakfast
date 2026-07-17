@@ -199,10 +199,14 @@
       paidAt: ""
     };
   }
-  function detectDuplicate(checkIns, guest) {
-    return checkIns.some(
-      (record) => record.guestType === GUEST_TYPES.HOTEL && record.roomNumber === guest.roomNumber
-    );
+  function findHotelCheckInByRoom(checkIns, roomNumber) {
+    const room = normalizeRoom(roomNumber);
+    if (!room) {
+      return null;
+    }
+    return checkIns.find(
+      (record) => record.guestType === GUEST_TYPES.HOTEL && normalizeRoom(record.roomNumber) === room
+    ) || null;
   }
   function checkEntitlement(guest, actualGuests) {
     if (guest.breakfastStatus !== BREAKFAST_STATUS.INCLUDED) {
@@ -217,6 +221,32 @@
     const actual = parseInteger(actualGuests, 0);
     const entitled = parseInteger(guest.breakfastQuantity, 0);
     return Math.max(0, actual - entitled);
+  }
+  function applyLateArrivals(record, { additionalGuests, tableNumber }) {
+    const added = Math.max(1, parseInteger(additionalGuests, 1));
+    const previousActual = parseInteger(record.actualGuests, 0);
+    const nextActual = previousActual + added;
+    const breakfastQuantity = parseInteger(record.breakfastQuantity, 0);
+    const previousExtras = parseInteger(record.extraGuests, 0);
+    let extraGuests = 0;
+    let entitlementExceeded = false;
+    if (record.breakfastStatus === BREAKFAST_STATUS.INCLUDED) {
+      extraGuests = Math.max(0, nextActual - breakfastQuantity);
+      entitlementExceeded = extraGuests > 0;
+    }
+    const nextTable = normalizeText(tableNumber) || record.tableNumber;
+    const extrasIncreased = extraGuests > previousExtras;
+    const resetPaid = extrasIncreased && Boolean(record.paid);
+    return {
+      ...record,
+      actualGuests: nextActual,
+      tableNumber: nextTable,
+      extraGuests,
+      entitlementExceeded,
+      paid: resetPaid ? false : Boolean(record.paid),
+      paidAt: resetPaid ? "" : record.paidAt || "",
+      lateArrivalAdded: added
+    };
   }
   function createHotelCheckIn(guest, formValues) {
     const actualGuests = parseInteger(
@@ -1673,16 +1703,10 @@
         this.ui.elements.tableNumberInput.focus();
         return;
       }
-      if (detectDuplicate(this.state.checkIns, this.selectedGuest)) {
-        const confirmed = await this.ui.promptConfirm({
-          title: "Duplicate Check-In",
-          message: "Room already checked in today. Do you want to override and continue?",
-          confirmLabel: "Override"
-        });
-        if (!confirmed) {
-          this.focusSearch();
-          return;
-        }
+      const existingCheckIn = findHotelCheckInByRoom(this.state.checkIns, this.selectedGuest.roomNumber);
+      if (existingCheckIn) {
+        await this.handleLateArrivals(existingCheckIn, tableNumber);
+        return;
       }
       const actualGuests = this.ui.elements.actualGuestsInput.value.trim();
       if (checkEntitlement(this.selectedGuest, actualGuests)) {
@@ -1702,6 +1726,54 @@
       });
       const successMessage = record.entitlementExceeded ? `${this.selectedGuest.roomNumber} checked in successfully. ${record.extraGuests} extra guest(s) added to payment list.` : `${this.selectedGuest.roomNumber} checked in successfully.`;
       this.commitCheckIn(record, successMessage, "success");
+    }
+    async handleLateArrivals(existingCheckIn, tableNumber) {
+      const formValues = await this.ui.promptForm({
+        title: `Late Arrivals \u2014 Room ${existingCheckIn.roomNumber}`,
+        submitLabel: "Add Arrivals",
+        fields: [
+          {
+            name: "additionalGuests",
+            label: "Additional guests arriving now",
+            type: "number",
+            min: 1,
+            value: "1",
+            required: true
+          }
+        ]
+      });
+      if (!formValues) {
+        this.focusSearch();
+        return;
+      }
+      const additionalGuests = parseInteger(formValues.additionalGuests, 0);
+      if (additionalGuests < 1) {
+        this.ui.renderMessage("Enter at least 1 additional guest.", "warning");
+        return;
+      }
+      const updated = applyLateArrivals(existingCheckIn, {
+        additionalGuests,
+        tableNumber
+      });
+      this.state.checkIns = this.state.checkIns.map(
+        (record) => record.id === existingCheckIn.id ? updated : record
+      );
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.ui.elements.tableNumberInput.value = "";
+      this.ui.elements.actualGuestsInput.value = "";
+      this.ui.elements.searchInput.value = "";
+      this.selectedGuest = null;
+      this.searchState.results = [];
+      this.searchState.activeIndex = -1;
+      this.ui.clearSearchResults();
+      this.refreshUi();
+      this.focusSearch();
+      const extrasNote = updated.entitlementExceeded ? ` Payment list updated (${updated.extraGuests} extra guest(s)).` : "";
+      this.ui.renderMessage(
+        `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s).${extrasNote}`,
+        "success"
+      );
     }
     async handleSpecialGuest(type) {
       const formValues = type === "walkIn" ? await this.ui.promptForm({
