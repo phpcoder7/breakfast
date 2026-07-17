@@ -1,4 +1,17 @@
-import { applyLateArrivals, createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, findHotelCheckInByRoom, getExtraGuests, updateCheckInTableNumber } from "./checkin.js";
+import {
+  applyLateArrivals,
+  checkEntitlement,
+  checkOutCheckIn,
+  createApartmentCheckIn,
+  createHotelCheckIn,
+  createManualGuest,
+  createWalkInCheckIn,
+  findActiveCheckInByTable,
+  findHotelCheckInByRoom,
+  getExtraGuests,
+  normalizeTable,
+  updateCheckInTableNumber
+} from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
@@ -356,6 +369,12 @@ class BreakfastApp {
       }
     }
 
+    const tableAvailable = await this.ensureTableAvailable(tableNumber);
+    if (!tableAvailable) {
+      this.ui.elements.tableNumberInput.focus();
+      return;
+    }
+
     const record = createHotelCheckIn(this.selectedGuest, {
       tableNumber,
       actualGuests
@@ -364,6 +383,37 @@ class BreakfastApp {
       ? `${this.selectedGuest.roomNumber} checked in successfully. ${record.extraGuests} extra guest(s) added to payment list.`
       : `${this.selectedGuest.roomNumber} checked in successfully.`;
     this.commitCheckIn(record, successMessage, "success");
+  }
+
+  async ensureTableAvailable(tableNumber, excludeCheckInId = "") {
+    const occupant = findActiveCheckInByTable(
+      this.state.checkIns,
+      tableNumber,
+      excludeCheckInId
+    );
+    if (!occupant) {
+      return true;
+    }
+
+    const occupantLabel = `${occupant.roomNumber || occupant.guestType || "Guest"}${
+      occupant.guestName ? ` — ${occupant.guestName}` : ""
+    }`;
+    const confirmed = await this.ui.promptConfirm({
+      title: `Table ${tableNumber} Is Occupied`,
+      message: `Table ${tableNumber} is occupied by ${occupantLabel}. Check out that party to free the table?`,
+      confirmLabel: "Check Out & Continue",
+      danger: true
+    });
+
+    if (!confirmed) {
+      return false;
+    }
+
+    this.state.checkIns = checkOutCheckIn(this.state.checkIns, occupant.id);
+    this.state.paymentList = syncPaymentList(this.state.checkIns);
+    this.persistState();
+    this.refreshUi();
+    return true;
   }
 
   async handleLateArrivals(existingCheckIn, tableNumber) {
@@ -393,6 +443,16 @@ class BreakfastApp {
     if (additionalGuests < 1) {
       this.ui.renderMessage("Enter at least 1 additional guest.", "warning");
       return;
+    }
+
+    if (normalizeTable(tableNumber) !== normalizeTable(existingCheckIn.tableNumber)) {
+      const tableAvailable = await this.ensureTableAvailable(
+        tableNumber,
+        existingCheckIn.id
+      );
+      if (!tableAvailable) {
+        return;
+      }
     }
 
     const updated = applyLateArrivals(existingCheckIn, {
@@ -451,6 +511,12 @@ class BreakfastApp {
           });
 
     if (!formValues) {
+      this.focusSearch();
+      return;
+    }
+
+    const tableAvailable = await this.ensureTableAvailable(formValues.tableNumber);
+    if (!tableAvailable) {
       this.focusSearch();
       return;
     }
@@ -641,6 +707,11 @@ class BreakfastApp {
     }
 
     if (nextTable === String(record.tableNumber || "")) {
+      return;
+    }
+
+    const tableAvailable = await this.ensureTableAvailable(nextTable, checkInId);
+    if (!tableAvailable) {
       return;
     }
 

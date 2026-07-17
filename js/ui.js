@@ -108,11 +108,18 @@ function guestPanelMarkup(guest) {
 }
 
 function checkInCardMarkup(record) {
-  const badgeClass = statusBadgeClass(record.breakfastStatus, record.guestType);
-  const badgeLabel = statusBadgeLabel(record.breakfastStatus, record.guestType);
+  const badgeClass = record.checkedOut
+    ? "bg-slate-200 text-slate-600"
+    : statusBadgeClass(record.breakfastStatus, record.guestType);
+  const badgeLabel = record.checkedOut
+    ? "Checked out"
+    : statusBadgeLabel(record.breakfastStatus, record.guestType);
+  const cardClass = record.checkedOut
+    ? "bg-slate-100 opacity-70"
+    : "bg-slate-50 hover:bg-white hover:shadow-card";
 
   return `
-    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card" data-checkin-id="${escapeHtml(record.id)}">
+    <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>

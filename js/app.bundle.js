@@ -205,8 +205,36 @@
       return null;
     }
     return checkIns.find(
-      (record) => record.guestType === GUEST_TYPES.HOTEL && normalizeRoom(record.roomNumber) === room
+      (record) => record.guestType === GUEST_TYPES.HOTEL && normalizeRoom(record.roomNumber) === room && record.checkedOut !== true
     ) || null;
+  }
+  function normalizeTable(tableNumber) {
+    return normalizeText(tableNumber).replace(/\s+/g, "").toUpperCase();
+  }
+  function findActiveCheckInByTable(checkIns, tableNumber, excludeCheckInId = "") {
+    const table = normalizeTable(tableNumber);
+    if (!table) {
+      return null;
+    }
+    return checkIns.find(
+      (record) => record.id !== excludeCheckInId && record.checkedOut !== true && normalizeTable(record.tableNumber) === table
+    ) || null;
+  }
+  function checkOutCheckIn(checkIns, checkInId) {
+    if (!checkInId) {
+      return checkIns;
+    }
+    const checkedOutAt = toTimestamp();
+    return checkIns.map((record) => {
+      if (record.id !== checkInId) {
+        return record;
+      }
+      return {
+        ...record,
+        checkedOut: true,
+        checkedOutAt
+      };
+    });
   }
   function checkEntitlement(guest, actualGuests) {
     if (guest.breakfastStatus !== BREAKFAST_STATUS.INCLUDED) {
@@ -790,10 +818,11 @@
   `;
   }
   function checkInCardMarkup(record) {
-    const badgeClass = statusBadgeClass(record.breakfastStatus, record.guestType);
-    const badgeLabel = statusBadgeLabel(record.breakfastStatus, record.guestType);
+    const badgeClass = record.checkedOut ? "bg-slate-200 text-slate-600" : statusBadgeClass(record.breakfastStatus, record.guestType);
+    const badgeLabel = record.checkedOut ? "Checked out" : statusBadgeLabel(record.breakfastStatus, record.guestType);
+    const cardClass = record.checkedOut ? "bg-slate-100 opacity-70" : "bg-slate-50 hover:bg-white hover:shadow-card";
     return `
-    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card" data-checkin-id="${escapeHtml(record.id)}">
+    <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
@@ -1719,12 +1748,42 @@
           return;
         }
       }
+      const tableAvailable = await this.ensureTableAvailable(tableNumber);
+      if (!tableAvailable) {
+        this.ui.elements.tableNumberInput.focus();
+        return;
+      }
       const record = createHotelCheckIn(this.selectedGuest, {
         tableNumber,
         actualGuests
       });
       const successMessage = record.entitlementExceeded ? `${this.selectedGuest.roomNumber} checked in successfully. ${record.extraGuests} extra guest(s) added to payment list.` : `${this.selectedGuest.roomNumber} checked in successfully.`;
       this.commitCheckIn(record, successMessage, "success");
+    }
+    async ensureTableAvailable(tableNumber, excludeCheckInId = "") {
+      const occupant = findActiveCheckInByTable(
+        this.state.checkIns,
+        tableNumber,
+        excludeCheckInId
+      );
+      if (!occupant) {
+        return true;
+      }
+      const occupantLabel = `${occupant.roomNumber || occupant.guestType || "Guest"}${occupant.guestName ? ` \u2014 ${occupant.guestName}` : ""}`;
+      const confirmed = await this.ui.promptConfirm({
+        title: `Table ${tableNumber} Is Occupied`,
+        message: `Table ${tableNumber} is occupied by ${occupantLabel}. Check out that party to free the table?`,
+        confirmLabel: "Check Out & Continue",
+        danger: true
+      });
+      if (!confirmed) {
+        return false;
+      }
+      this.state.checkIns = checkOutCheckIn(this.state.checkIns, occupant.id);
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.refreshUi();
+      return true;
     }
     async handleLateArrivals(existingCheckIn, tableNumber) {
       const currentTable = existingCheckIn.tableNumber || "-";
@@ -1751,6 +1810,15 @@
       if (additionalGuests < 1) {
         this.ui.renderMessage("Enter at least 1 additional guest.", "warning");
         return;
+      }
+      if (normalizeTable(tableNumber) !== normalizeTable(existingCheckIn.tableNumber)) {
+        const tableAvailable = await this.ensureTableAvailable(
+          tableNumber,
+          existingCheckIn.id
+        );
+        if (!tableAvailable) {
+          return;
+        }
       }
       const updated = applyLateArrivals(existingCheckIn, {
         additionalGuests,
@@ -1798,6 +1866,11 @@
         ]
       });
       if (!formValues) {
+        this.focusSearch();
+        return;
+      }
+      const tableAvailable = await this.ensureTableAvailable(formValues.tableNumber);
+      if (!tableAvailable) {
         this.focusSearch();
         return;
       }
@@ -1961,6 +2034,10 @@
         return;
       }
       if (nextTable === String(record.tableNumber || "")) {
+        return;
+      }
+      const tableAvailable = await this.ensureTableAvailable(nextTable, checkInId);
+      if (!tableAvailable) {
         return;
       }
       this.state.checkIns = updateCheckInTableNumber(this.state.checkIns, checkInId, nextTable);

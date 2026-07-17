@@ -66,9 +66,51 @@ export function findHotelCheckInByRoom(checkIns, roomNumber) {
 
   return (
     checkIns.find(
-      (record) => record.guestType === GUEST_TYPES.HOTEL && normalizeRoom(record.roomNumber) === room
+      (record) =>
+        record.guestType === GUEST_TYPES.HOTEL &&
+        normalizeRoom(record.roomNumber) === room &&
+        record.checkedOut !== true
     ) || null
   );
+}
+
+export function normalizeTable(tableNumber) {
+  return normalizeText(tableNumber).replace(/\s+/g, "").toUpperCase();
+}
+
+export function findActiveCheckInByTable(checkIns, tableNumber, excludeCheckInId = "") {
+  const table = normalizeTable(tableNumber);
+  if (!table) {
+    return null;
+  }
+
+  return (
+    checkIns.find(
+      (record) =>
+        record.id !== excludeCheckInId &&
+        record.checkedOut !== true &&
+        normalizeTable(record.tableNumber) === table
+    ) || null
+  );
+}
+
+export function checkOutCheckIn(checkIns, checkInId) {
+  if (!checkInId) {
+    return checkIns;
+  }
+
+  const checkedOutAt = toTimestamp();
+  return checkIns.map((record) => {
+    if (record.id !== checkInId) {
+      return record;
+    }
+
+    return {
+      ...record,
+      checkedOut: true,
+      checkedOutAt
+    };
+  });
 }
 
 export function checkEntitlement(guest, actualGuests) {
