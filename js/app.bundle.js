@@ -329,6 +329,38 @@
       discount: "20%"
     });
   }
+  function guestFromCheckInRecord(checkIn, guests = []) {
+    const room = normalizeRoom(checkIn.roomNumber);
+    const matched = guests.find((guest) => normalizeRoom(guest.roomNumber) === room);
+    if (matched) {
+      return {
+        ...matched,
+        breakfastStatus: checkIn.breakfastStatus ?? matched.breakfastStatus,
+        breakfastQuantity: checkIn.breakfastQuantity ?? matched.breakfastQuantity,
+        mealPlan: checkIn.mealPlan || matched.mealPlan,
+        statusOverride: Boolean(checkIn.statusOverride || matched.statusOverride)
+      };
+    }
+    const products = Array.isArray(checkIn.products) ? checkIn.products : normalizeText(checkIn.products) && checkIn.products !== "-" ? String(checkIn.products).split(",").map((item) => item.trim()).filter(Boolean) : [];
+    const descriptions = checkIn.guestType === GUEST_TYPES.WALK_IN ? ["Walk-In guest"] : checkIn.guestType === GUEST_TYPES.APARTMENT ? ["Apartment guest"] : ["Checked in \u2014 limited guest data"];
+    return {
+      id: checkIn.id,
+      roomNumber: checkIn.roomNumber,
+      fullName: checkIn.guestName || "-",
+      adults: checkIn.adults ?? 0,
+      children: checkIn.children ?? 0,
+      mealPlan: checkIn.mealPlan || "-",
+      products,
+      productDescriptions: descriptions,
+      breakfastStatus: checkIn.breakfastStatus,
+      breakfastQuantity: checkIn.breakfastQuantity ?? 0,
+      arrival: "",
+      departure: "",
+      confirmationNumber: checkIn.confirmationNumber || "",
+      statusOverride: Boolean(checkIn.statusOverride),
+      guestType: checkIn.guestType
+    };
+  }
   function createManualGuest(formValues) {
     const adults = parseInteger(formValues.adults, 1);
     const children = parseInteger(formValues.children, 0);
@@ -826,7 +858,7 @@
     const checkOutTime = record.checkedOutAt ? formatTime(record.checkedOutAt) : "";
     const timeLine = record.checkedOut ? `${escapeHtml(record.timeLabel || "")}${checkOutTime ? ` \xB7 Out ${escapeHtml(checkOutTime)}` : ""}` : escapeHtml(record.timeLabel || "");
     return `
-    <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
+    <article class="card-enter cursor-pointer rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${timeLine}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
@@ -867,7 +899,7 @@
     const tableButtonClass = paid ? "bg-white text-slate-700 hover:bg-green-50" : "bg-white text-slate-700 hover:bg-red-50";
     if (paid) {
       return `
-      <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
+      <article class="card-enter cursor-pointer rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
         <div class="mb-2 flex items-center justify-between gap-2">
           <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
           <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-extrabold text-success">
@@ -895,7 +927,7 @@
     `;
     }
     return `
-    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
+    <article class="card-enter cursor-pointer rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-extrabold text-danger">
@@ -1583,6 +1615,11 @@
         const payButton = event.target.closest("[data-pay-id]");
         if (payButton) {
           this.handleMarkPaid(payButton.dataset.payId);
+          return;
+        }
+        const card = event.target.closest("[data-payment-id]");
+        if (card) {
+          this.showGuestFromCard(card.dataset.paymentId);
         }
       });
       elements.checkinTableBody?.addEventListener("click", (event) => {
@@ -1594,6 +1631,11 @@
         const checkoutButton = event.target.closest("[data-checkout-id]");
         if (checkoutButton) {
           this.handleCheckOut(checkoutButton.dataset.checkoutId);
+          return;
+        }
+        const card = event.target.closest("[data-checkin-id]");
+        if (card) {
+          this.showGuestFromCard(card.dataset.checkinId);
         }
       });
       elements.guestPanel?.addEventListener("click", (event) => {
@@ -1756,6 +1798,19 @@
       this.ui.clearSearchResults();
       this.ui.activateTab("checkin");
       this.ui.elements.tableNumberInput.focus();
+    }
+    showGuestFromCard(checkInId) {
+      if (!checkInId) {
+        return;
+      }
+      const checkIn = this.state.checkIns.find((record) => record.id === checkInId);
+      if (!checkIn) {
+        return;
+      }
+      const guest = guestFromCheckInRecord(checkIn, this.state.guests);
+      this.selectedGuest = guest;
+      this.ui.renderGuest(guest);
+      this.ui.setMobileView("search");
     }
     async submitHotelCheckIn() {
       if (!this.selectedGuest) {

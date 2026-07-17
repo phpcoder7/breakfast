@@ -6,6 +6,7 @@ import {
   createHotelCheckIn,
   createManualGuest,
   createWalkInCheckIn,
+  guestFromCheckInRecord,
   findActiveCheckInsByTable,
   findHotelCheckInByRoom,
   getExtraGuests,
@@ -139,6 +140,12 @@ class BreakfastApp {
       const payButton = event.target.closest("[data-pay-id]");
       if (payButton) {
         this.handleMarkPaid(payButton.dataset.payId);
+        return;
+      }
+
+      const card = event.target.closest("[data-payment-id]");
+      if (card) {
+        this.showGuestFromCard(card.dataset.paymentId);
       }
     });
     elements.checkinTableBody?.addEventListener("click", (event) => {
@@ -151,6 +158,12 @@ class BreakfastApp {
       const checkoutButton = event.target.closest("[data-checkout-id]");
       if (checkoutButton) {
         this.handleCheckOut(checkoutButton.dataset.checkoutId);
+        return;
+      }
+
+      const card = event.target.closest("[data-checkin-id]");
+      if (card) {
+        this.showGuestFromCard(card.dataset.checkinId);
       }
     });
     elements.guestPanel?.addEventListener("click", (event) => {
@@ -341,6 +354,22 @@ class BreakfastApp {
     this.ui.clearSearchResults();
     this.ui.activateTab("checkin");
     this.ui.elements.tableNumberInput.focus();
+  }
+
+  showGuestFromCard(checkInId) {
+    if (!checkInId) {
+      return;
+    }
+
+    const checkIn = this.state.checkIns.find((record) => record.id === checkInId);
+    if (!checkIn) {
+      return;
+    }
+
+    const guest = guestFromCheckInRecord(checkIn, this.state.guests);
+    this.selectedGuest = guest;
+    this.ui.renderGuest(guest);
+    this.ui.setMobileView("search");
   }
 
   async submitHotelCheckIn() {

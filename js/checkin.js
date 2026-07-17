@@ -222,6 +222,54 @@ export function createApartmentCheckIn(formValues) {
   });
 }
 
+export function guestFromCheckInRecord(checkIn, guests = []) {
+  const room = normalizeRoom(checkIn.roomNumber);
+  const matched = guests.find((guest) => normalizeRoom(guest.roomNumber) === room);
+  if (matched) {
+    return {
+      ...matched,
+      breakfastStatus: checkIn.breakfastStatus ?? matched.breakfastStatus,
+      breakfastQuantity: checkIn.breakfastQuantity ?? matched.breakfastQuantity,
+      mealPlan: checkIn.mealPlan || matched.mealPlan,
+      statusOverride: Boolean(checkIn.statusOverride || matched.statusOverride)
+    };
+  }
+
+  const products = Array.isArray(checkIn.products)
+    ? checkIn.products
+    : normalizeText(checkIn.products) && checkIn.products !== "-"
+      ? String(checkIn.products)
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+  const descriptions =
+    checkIn.guestType === GUEST_TYPES.WALK_IN
+      ? ["Walk-In guest"]
+      : checkIn.guestType === GUEST_TYPES.APARTMENT
+        ? ["Apartment guest"]
+        : ["Checked in — limited guest data"];
+
+  return {
+    id: checkIn.id,
+    roomNumber: checkIn.roomNumber,
+    fullName: checkIn.guestName || "-",
+    adults: checkIn.adults ?? 0,
+    children: checkIn.children ?? 0,
+    mealPlan: checkIn.mealPlan || "-",
+    products,
+    productDescriptions: descriptions,
+    breakfastStatus: checkIn.breakfastStatus,
+    breakfastQuantity: checkIn.breakfastQuantity ?? 0,
+    arrival: "",
+    departure: "",
+    confirmationNumber: checkIn.confirmationNumber || "",
+    statusOverride: Boolean(checkIn.statusOverride),
+    guestType: checkIn.guestType
+  };
+}
+
 export function createManualGuest(formValues) {
   const adults = parseInteger(formValues.adults, 1);
   const children = parseInteger(formValues.children, 0);

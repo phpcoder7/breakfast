@@ -124,7 +124,7 @@ function checkInCardMarkup(record) {
     : escapeHtml(record.timeLabel || "");
 
   return `
-    <article class="card-enter rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
+    <article class="card-enter cursor-pointer rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${timeLine}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
@@ -173,7 +173,7 @@ function paymentCardMarkup(record) {
 
   if (paid) {
     return `
-      <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
+      <article class="card-enter cursor-pointer rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
         <div class="mb-2 flex items-center justify-between gap-2">
           <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
           <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-extrabold text-success">
@@ -202,7 +202,7 @@ function paymentCardMarkup(record) {
   }
 
   return `
-    <article class="card-enter rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
+    <article class="card-enter cursor-pointer rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-white p-3 shadow-press" data-payment-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-extrabold text-danger">
