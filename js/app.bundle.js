@@ -355,10 +355,13 @@
   function isNoBreakfastCode(code) {
     return Boolean(NO_BREAKFAST_CODES[normalizeCode(code)]);
   }
-  function aggregateForecastRows(forecastRows) {
+  function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(row.confirmationNumber) || `room:${normalizeRoom(row.roomNumber)}`) {
     const grouped = /* @__PURE__ */ new Map();
     forecastRows.forEach((row) => {
-      const key = normalizeText(row.confirmationNumber) || `room:${normalizeRoom(row.roomNumber)}`;
+      const key = keyForRow(row);
+      if (!key) {
+        return;
+      }
       const current = grouped.get(key) || {
         confirmationNumber: normalizeText(row.confirmationNumber),
         roomNumber: normalizeRoom(row.roomNumber),
@@ -430,15 +433,61 @@
     }
     return null;
   }
+  function guestFromForecast(packageData) {
+    const products = uniqueList((packageData.products || []).map(normalizeCode));
+    const breakfast = breakfastDecision(
+      "",
+      products,
+      packageData.breakfastQuantity || 0,
+      packageData.adults,
+      packageData.children
+    );
+    return {
+      id: createId("guest"),
+      roomNumber: normalizeRoom(packageData.roomNumber),
+      firstName: packageData.firstName || "",
+      lastName: packageData.lastName || "",
+      fullName: joinName(packageData.firstName, packageData.lastName),
+      arrival: packageData.arrival || "",
+      departure: packageData.departure || "",
+      adults: packageData.adults || 0,
+      children: packageData.children || 0,
+      confirmationNumber: normalizeText(packageData.confirmationNumber),
+      mealPlan: "",
+      products,
+      productDescriptions: uniqueList(packageData.productDescriptions || []),
+      packageQuantity: packageData.packageQuantity || 0,
+      reservationStatus: packageData.reservationStatus || "CHECKED IN",
+      rateCode: packageData.rateCode || "",
+      breakfastIncluded: breakfast.breakfastIncluded,
+      breakfastStatus: breakfast.breakfastStatus,
+      breakfastQuantity: breakfast.breakfastQuantity,
+      guestType: GUEST_TYPES.HOTEL
+    };
+  }
   function mergeGuestData(mealPlanRows, packageForecastRows) {
     const forecastByConfirmation = aggregateForecastRows(
-      packageForecastRows.filter((row) => normalizeText(row.confirmationNumber))
+      packageForecastRows.filter((row) => normalizeText(row.confirmationNumber)),
+      (row) => normalizeText(row.confirmationNumber)
     );
     const forecastByRoom = aggregateForecastRows(
-      packageForecastRows.filter((row) => normalizeRoom(row.roomNumber))
+      packageForecastRows.filter((row) => normalizeRoom(row.roomNumber)),
+      (row) => normalizeRoom(row.roomNumber)
     );
-    return mealPlanRows.map((mealRow) => {
+    const matchedConfirmations = /* @__PURE__ */ new Set();
+    const matchedRooms = /* @__PURE__ */ new Set();
+    const guestsFromMealPlan = mealPlanRows.map((mealRow) => {
       const packageData = resolvePackageMatch(mealRow, forecastByConfirmation, forecastByRoom);
+      if (packageData) {
+        const confirmation = normalizeText(packageData.confirmationNumber);
+        const room = normalizeRoom(packageData.roomNumber);
+        if (confirmation) {
+          matchedConfirmations.add(confirmation);
+        }
+        if (room) {
+          matchedRooms.add(room);
+        }
+      }
       const products = uniqueList([
         ...packageData?.products || [],
         mealRow.mealPlan
@@ -475,6 +524,13 @@
         guestType: GUEST_TYPES.HOTEL
       };
     });
+    const guestsFromForecast = Array.from(forecastByConfirmation.values()).filter((packageData) => {
+      const confirmation = normalizeText(packageData.confirmationNumber);
+      const room = normalizeRoom(packageData.roomNumber);
+      return !matchedConfirmations.has(confirmation) && !matchedRooms.has(room);
+    }).map(guestFromForecast);
+    const forecastWithoutConfirmation = Array.from(forecastByRoom.values()).filter((packageData) => !normalizeText(packageData.confirmationNumber)).filter((packageData) => !matchedRooms.has(normalizeRoom(packageData.roomNumber))).map(guestFromForecast);
+    return [...guestsFromMealPlan, ...guestsFromForecast, ...forecastWithoutConfirmation];
   }
 
   // js/payment.js

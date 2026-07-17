@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakfast-checkin-v2";
+const CACHE_NAME = "breakfast-checkin-v3";
 
 const APP_ASSETS = [
   "./",
