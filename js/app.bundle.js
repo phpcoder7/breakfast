@@ -299,6 +299,21 @@
       statusOverride: true
     };
   }
+  function updateCheckInTableNumber(checkIns, checkInId, tableNumber) {
+    const nextTable = normalizeText(tableNumber);
+    if (!checkInId || !nextTable) {
+      return checkIns;
+    }
+    return checkIns.map((record) => {
+      if (record.id !== checkInId) {
+        return record;
+      }
+      return {
+        ...record,
+        tableNumber: nextTable
+      };
+    });
+  }
 
   // js/export.js
   function ensureXlsx() {
@@ -751,15 +766,24 @@
     const badgeClass = statusBadgeClass(record.breakfastStatus, record.guestType);
     const badgeLabel = statusBadgeLabel(record.breakfastStatus, record.guestType);
     return `
-    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card">
+    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.roomNumber || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-      <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-        <span><i class="fa-solid fa-chair mr-1 text-primary"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+      <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50"
+          type="button"
+          data-edit-table-id="${escapeHtml(record.id)}"
+          title="Change table number"
+        >
+          <i class="fa-solid fa-chair text-primary"></i>
+          <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+        </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
     </article>
@@ -767,6 +791,8 @@
   }
   function paymentCardMarkup(record) {
     const paid = Boolean(record.paid);
+    const tableButtonTone = paid ? "text-success" : "text-danger";
+    const tableButtonClass = paid ? "bg-white text-slate-700 hover:bg-green-50" : "bg-white text-slate-700 hover:bg-red-50";
     if (paid) {
       return `
       <article class="card-enter rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 to-white p-3 opacity-90" data-payment-id="${escapeHtml(record.id)}">
@@ -779,8 +805,17 @@
         </div>
         <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
         <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-        <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-          <span><i class="fa-solid fa-chair mr-1 text-success"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+        <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+          <button
+            class="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition active:scale-[0.97] ${tableButtonClass}"
+            type="button"
+            data-edit-table-id="${escapeHtml(record.id)}"
+            title="Change table number"
+          >
+            <i class="fa-solid fa-chair ${tableButtonTone}"></i>
+            <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+            <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+          </button>
           <span>${escapeHtml(record.guestType || "")}</span>
         </div>
         <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
@@ -798,8 +833,17 @@
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-      <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-        <span><i class="fa-solid fa-chair mr-1 text-danger"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+      <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition active:scale-[0.97] ${tableButtonClass}"
+          type="button"
+          data-edit-table-id="${escapeHtml(record.id)}"
+          title="Change table number"
+        >
+          <i class="fa-solid fa-chair ${tableButtonTone}"></i>
+          <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+        </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
@@ -1441,9 +1485,20 @@
       elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
       elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
       elements.paymentTableBody?.addEventListener("click", (event) => {
+        const editTableButton = event.target.closest("[data-edit-table-id]");
+        if (editTableButton) {
+          this.handleChangeTable(editTableButton.dataset.editTableId);
+          return;
+        }
         const payButton = event.target.closest("[data-pay-id]");
         if (payButton) {
           this.handleMarkPaid(payButton.dataset.payId);
+        }
+      });
+      elements.checkinTableBody?.addEventListener("click", (event) => {
+        const editTableButton = event.target.closest("[data-edit-table-id]");
+        if (editTableButton) {
+          this.handleChangeTable(editTableButton.dataset.editTableId);
         }
       });
       elements.guestPanel?.addEventListener("click", (event) => {
@@ -1803,6 +1858,46 @@
       this.persistState();
       this.refreshUi();
       this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
+    }
+    async handleChangeTable(checkInId) {
+      if (!checkInId) {
+        return;
+      }
+      const record = this.state.checkIns.find((item) => item.id === checkInId);
+      if (!record) {
+        return;
+      }
+      const formValues = await this.ui.promptForm({
+        title: "Change Table Number",
+        submitLabel: "Update",
+        fields: [
+          {
+            name: "tableNumber",
+            label: "Table Number",
+            value: String(record.tableNumber || ""),
+            required: true
+          }
+        ]
+      });
+      if (!formValues) {
+        return;
+      }
+      const nextTable = String(formValues.tableNumber || "").trim();
+      if (!nextTable) {
+        this.ui.renderMessage("Table number is required.", "warning");
+        return;
+      }
+      if (nextTable === String(record.tableNumber || "")) {
+        return;
+      }
+      this.state.checkIns = updateCheckInTableNumber(this.state.checkIns, checkInId, nextTable);
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.refreshUi();
+      this.ui.renderMessage(
+        `Table updated for ${record.roomNumber}: ${record.tableNumber || "-"} \u2192 ${nextTable}.`,
+        "success"
+      );
     }
     commitCheckIn(record, message, tone) {
       this.state.checkIns.unshift(record);

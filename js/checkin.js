@@ -170,3 +170,21 @@ export function createManualGuest(formValues) {
     statusOverride: true
   };
 }
+
+export function updateCheckInTableNumber(checkIns, checkInId, tableNumber) {
+  const nextTable = normalizeText(tableNumber);
+  if (!checkInId || !nextTable) {
+    return checkIns;
+  }
+
+  return checkIns.map((record) => {
+    if (record.id !== checkInId) {
+      return record;
+    }
+
+    return {
+      ...record,
+      tableNumber: nextTable
+    };
+  });
+}

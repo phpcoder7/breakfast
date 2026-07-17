@@ -1,4 +1,4 @@
-import { createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests } from "./checkin.js";
+import { createApartmentCheckIn, createHotelCheckIn, createManualGuest, createWalkInCheckIn, checkEntitlement, detectDuplicate, getExtraGuests, updateCheckInTableNumber } from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
@@ -117,9 +117,21 @@ class BreakfastApp {
     elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
     elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
     elements.paymentTableBody?.addEventListener("click", (event) => {
+      const editTableButton = event.target.closest("[data-edit-table-id]");
+      if (editTableButton) {
+        this.handleChangeTable(editTableButton.dataset.editTableId);
+        return;
+      }
+
       const payButton = event.target.closest("[data-pay-id]");
       if (payButton) {
         this.handleMarkPaid(payButton.dataset.payId);
+      }
+    });
+    elements.checkinTableBody?.addEventListener("click", (event) => {
+      const editTableButton = event.target.closest("[data-edit-table-id]");
+      if (editTableButton) {
+        this.handleChangeTable(editTableButton.dataset.editTableId);
       }
     });
     elements.guestPanel?.addEventListener("click", (event) => {
@@ -540,6 +552,53 @@ class BreakfastApp {
     this.persistState();
     this.refreshUi();
     this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
+  }
+
+  async handleChangeTable(checkInId) {
+    if (!checkInId) {
+      return;
+    }
+
+    const record = this.state.checkIns.find((item) => item.id === checkInId);
+    if (!record) {
+      return;
+    }
+
+    const formValues = await this.ui.promptForm({
+      title: "Change Table Number",
+      submitLabel: "Update",
+      fields: [
+        {
+          name: "tableNumber",
+          label: "Table Number",
+          value: String(record.tableNumber || ""),
+          required: true
+        }
+      ]
+    });
+
+    if (!formValues) {
+      return;
+    }
+
+    const nextTable = String(formValues.tableNumber || "").trim();
+    if (!nextTable) {
+      this.ui.renderMessage("Table number is required.", "warning");
+      return;
+    }
+
+    if (nextTable === String(record.tableNumber || "")) {
+      return;
+    }
+
+    this.state.checkIns = updateCheckInTableNumber(this.state.checkIns, checkInId, nextTable);
+    this.state.paymentList = syncPaymentList(this.state.checkIns);
+    this.persistState();
+    this.refreshUi();
+    this.ui.renderMessage(
+      `Table updated for ${record.roomNumber}: ${record.tableNumber || "-"} → ${nextTable}.`,
+      "success"
+    );
   }
 
   commitCheckIn(record, message, tone) {

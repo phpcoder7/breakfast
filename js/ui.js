@@ -112,15 +112,24 @@ function checkInCardMarkup(record) {
   const badgeLabel = statusBadgeLabel(record.breakfastStatus, record.guestType);
 
   return `
-    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card">
+    <article class="card-enter rounded-2xl bg-slate-50 p-3 transition hover:bg-white hover:shadow-card" data-checkin-id="${escapeHtml(record.id)}">
       <div class="mb-2 flex items-center justify-between gap-2">
         <span class="text-xs font-bold text-slate-400">${escapeHtml(record.timeLabel || "")}</span>
         <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ${badgeClass}">${escapeHtml(badgeLabel)}</span>
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.roomNumber || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-      <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-        <span><i class="fa-solid fa-chair mr-1 text-primary"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+      <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50"
+          type="button"
+          data-edit-table-id="${escapeHtml(record.id)}"
+          title="Change table number"
+        >
+          <i class="fa-solid fa-chair text-primary"></i>
+          <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+        </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
     </article>
@@ -129,6 +138,10 @@ function checkInCardMarkup(record) {
 
 function paymentCardMarkup(record) {
   const paid = Boolean(record.paid);
+  const tableButtonTone = paid ? "text-success" : "text-danger";
+  const tableButtonClass = paid
+    ? "bg-white text-slate-700 hover:bg-green-50"
+    : "bg-white text-slate-700 hover:bg-red-50";
 
   if (paid) {
     return `
@@ -142,8 +155,17 @@ function paymentCardMarkup(record) {
         </div>
         <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
         <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-        <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-          <span><i class="fa-solid fa-chair mr-1 text-success"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+        <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+          <button
+            class="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition active:scale-[0.97] ${tableButtonClass}"
+            type="button"
+            data-edit-table-id="${escapeHtml(record.id)}"
+            title="Change table number"
+          >
+            <i class="fa-solid fa-chair ${tableButtonTone}"></i>
+            <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+            <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+          </button>
           <span>${escapeHtml(record.guestType || "")}</span>
         </div>
         <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.reason || "")}</div>
@@ -162,8 +184,17 @@ function paymentCardMarkup(record) {
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.displayLocation || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-      <div class="mt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-        <span><i class="fa-solid fa-chair mr-1 text-danger"></i>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+      <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 transition active:scale-[0.97] ${tableButtonClass}"
+          type="button"
+          data-edit-table-id="${escapeHtml(record.id)}"
+          title="Change table number"
+        >
+          <i class="fa-solid fa-chair ${tableButtonTone}"></i>
+          <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
+          <i class="fa-solid fa-pen text-[10px] text-slate-400"></i>
+        </button>
         <span>${escapeHtml(record.guestType || "")}</span>
       </div>
       <div class="mt-2 text-xs font-bold text-danger">${escapeHtml(record.reason || "")}</div>
