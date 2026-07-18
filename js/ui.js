@@ -19,16 +19,27 @@ function guestCountForRecord(record) {
   return parseInteger(record.adults, 0) + parseInteger(record.children, 0);
 }
 
-function matchesCheckInFilter(record, query) {
-  const needle = normalizeSearchText(query);
-  if (!needle) {
-    return true;
+function matchesCheckInFilters(record, tableQuery, guestQuery) {
+  const tableNeedle = normalizeSearchText(tableQuery);
+  const guestNeedle = normalizeSearchText(guestQuery);
+
+  if (tableNeedle) {
+    const tableHaystack = normalizeSearchText(record.tableNumber || "");
+    if (!tableHaystack.includes(tableNeedle)) {
+      return false;
+    }
   }
 
-  const haystack = normalizeSearchText(
-    [record.tableNumber, record.roomNumber, record.guestName].filter(Boolean).join(" ")
-  );
-  return haystack.includes(needle);
+  if (guestNeedle) {
+    const guestHaystack = normalizeSearchText(
+      [record.roomNumber, record.guestName].filter(Boolean).join(" ")
+    );
+    if (!guestHaystack.includes(guestNeedle)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function statusBadgeClass(status, guestType = "") {
@@ -313,7 +324,8 @@ export class BreakfastUI {
       newDayButton: document.querySelector("#newDayButton"),
       exportTodayButton: document.querySelector("#exportTodayButton"),
       exportAccountingButton: document.querySelector("#exportAccountingButton"),
-      checkinSearchInput: document.querySelector("#checkinSearchInput"),
+      checkinTableSearchInput: document.querySelector("#checkinTableSearchInput"),
+      checkinGuestSearchInput: document.querySelector("#checkinGuestSearchInput"),
       checkinTableBody: document.querySelector("#checkinTableBody"),
       paymentTableBody: document.querySelector("#paymentTableBody"),
       tabButtons: Array.from(document.querySelectorAll("[data-tab-target]")),
@@ -336,9 +348,9 @@ export class BreakfastUI {
   }
 
   bindCheckInSearch() {
-    this.elements.checkinSearchInput?.addEventListener("input", (event) => {
-      this.filterCheckIns(event.target.value);
-    });
+    const rerender = () => this.filterCheckIns();
+    this.elements.checkinTableSearchInput?.addEventListener("input", rerender);
+    this.elements.checkinGuestSearchInput?.addEventListener("input", rerender);
   }
 
   bindRecentSearchClicks() {
@@ -488,14 +500,19 @@ export class BreakfastUI {
 
   renderCheckIns(records) {
     this._lastCheckIns = records;
-    if (!records.length && this.elements.checkinSearchInput) {
-      this.elements.checkinSearchInput.value = "";
+    if (!records.length) {
+      if (this.elements.checkinTableSearchInput) {
+        this.elements.checkinTableSearchInput.value = "";
+      }
+      if (this.elements.checkinGuestSearchInput) {
+        this.elements.checkinGuestSearchInput.value = "";
+      }
     }
-    this.filterCheckIns(this.elements.checkinSearchInput?.value || "");
+    this.filterCheckIns();
     this.updateStatistics(records, this._lastPayments || []);
   }
 
-  filterCheckIns(query = "") {
+  filterCheckIns() {
     const records = this._lastCheckIns || [];
     if (!this.elements.checkinTableBody) {
       return;
@@ -506,7 +523,11 @@ export class BreakfastUI {
       return;
     }
 
-    const filtered = records.filter((record) => matchesCheckInFilter(record, query));
+    const tableQuery = this.elements.checkinTableSearchInput?.value || "";
+    const guestQuery = this.elements.checkinGuestSearchInput?.value || "";
+    const filtered = records.filter((record) =>
+      matchesCheckInFilters(record, tableQuery, guestQuery)
+    );
     this.elements.checkinTableBody.innerHTML = filtered.length
       ? filtered.map((record) => checkInCardMarkup(record)).join("")
       : emptyCardsMarkup("No matching check-ins.");
