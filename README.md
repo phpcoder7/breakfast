@@ -52,7 +52,7 @@ Use the `New Day` button at the start of breakfast service when you want to clea
 If you edit files inside `js/`, rebuild the bundle with:
 
 ```bash
-npx esbuild js/app.js --bundle --format=iife --outfile=js/app.bundle.js
+npx esbuild js/app.js --bundle --format=iife --loader:.txt=text --outfile=js/app.bundle.js
 ```
 
 ## GitHub Pages

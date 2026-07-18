@@ -7,6 +7,7 @@ import {
   parseInteger,
   statusMeta
 } from "./utils.js";
+import { normalizeTable } from "./checkin.js";
 import { renderSearchResults } from "./search.js";
 
 const RECENT_LIMIT = 6;
@@ -17,6 +18,33 @@ function guestCountForRecord(record) {
     return actual;
   }
   return parseInteger(record.adults, 0) + parseInteger(record.children, 0);
+}
+
+function tableCardMarkup(tableNumber, occupants) {
+  const occupied = occupants.length > 0;
+  const cardClass = occupied
+    ? "border-red-100 bg-gradient-to-br from-red-50 to-white text-danger"
+    : "border-green-100 bg-gradient-to-br from-green-50 to-white text-success";
+  const statusLabel = occupied ? "Occupied" : "Available";
+  const partiesLabel =
+    occupied
+      ? occupants.length === 1
+        ? "1 party"
+        : `${occupants.length} parties`
+      : "Free";
+
+  return `
+    <button
+      class="card-enter flex min-h-[88px] flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition active:scale-[0.97] ${cardClass}"
+      type="button"
+      data-table-number="${escapeHtml(tableNumber)}"
+      data-table-occupied="${occupied ? "true" : "false"}"
+    >
+      <span class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(tableNumber)}</span>
+      <span class="text-[10px] font-extrabold uppercase tracking-wider">${statusLabel}</span>
+      <span class="text-xs font-bold text-slate-500">${escapeHtml(partiesLabel)}</span>
+    </button>
+  `;
 }
 
 function matchesCheckInFilters(record, tableQuery, guestQuery) {
@@ -328,6 +356,9 @@ export class BreakfastUI {
       checkinGuestSearchInput: document.querySelector("#checkinGuestSearchInput"),
       checkinTableBody: document.querySelector("#checkinTableBody"),
       paymentTableBody: document.querySelector("#paymentTableBody"),
+      tablesGrid: document.querySelector("#tablesGrid"),
+      tablesAvailableCount: document.querySelector("#tablesAvailableCount"),
+      tablesOccupiedCount: document.querySelector("#tablesOccupiedCount"),
       tabButtons: Array.from(document.querySelectorAll("[data-tab-target]")),
       tabPanels: Array.from(document.querySelectorAll("[data-tab-panel]")),
       messageArea: document.querySelector("#messageArea"),
@@ -541,6 +572,58 @@ export class BreakfastUI {
     this.updateStatistics(this._lastCheckIns || [], records);
   }
 
+  renderTables(tableNumbers, checkIns = []) {
+    if (!this.elements.tablesGrid) {
+      return;
+    }
+
+    if (!tableNumbers.length) {
+      this.elements.tablesGrid.innerHTML = emptyCardsMarkup("No restaurant tables configured for this property.");
+      if (this.elements.tablesAvailableCount) {
+        this.elements.tablesAvailableCount.textContent = "0";
+      }
+      if (this.elements.tablesOccupiedCount) {
+        this.elements.tablesOccupiedCount.textContent = "0";
+      }
+      return;
+    }
+
+    const activeByTable = new Map();
+    checkIns
+      .filter((record) => record.checkedOut !== true)
+      .forEach((record) => {
+        const key = normalizeTable(record.tableNumber);
+        if (!key) {
+          return;
+        }
+        if (!activeByTable.has(key)) {
+          activeByTable.set(key, []);
+        }
+        activeByTable.get(key).push(record);
+      });
+
+    let available = 0;
+    let occupied = 0;
+    this.elements.tablesGrid.innerHTML = tableNumbers
+      .map((tableNumber) => {
+        const occupants = activeByTable.get(normalizeTable(tableNumber)) || [];
+        if (occupants.length) {
+          occupied += 1;
+        } else {
+          available += 1;
+        }
+        return tableCardMarkup(tableNumber, occupants);
+      })
+      .join("");
+
+    if (this.elements.tablesAvailableCount) {
+      this.elements.tablesAvailableCount.textContent = String(available);
+    }
+    if (this.elements.tablesOccupiedCount) {
+      this.elements.tablesOccupiedCount.textContent = String(occupied);
+    }
+  }
+
   playSuccessAnimation() {
     const toast = this.elements.successToast;
     const button = this.elements.checkInButton;
@@ -598,7 +681,13 @@ export class BreakfastUI {
   setMobileView(viewName) {
     const workspace = document.querySelector(".main-workspace");
     if (workspace) {
-      workspace.classList.remove("mobile-view-search", "mobile-view-checkin", "mobile-view-checkins", "mobile-view-payments");
+      workspace.classList.remove(
+        "mobile-view-search",
+        "mobile-view-checkin",
+        "mobile-view-checkins",
+        "mobile-view-payments",
+        "mobile-view-tables"
+      );
       workspace.classList.add(`mobile-view-${viewName}`);
     }
 

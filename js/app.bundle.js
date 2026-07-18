@@ -773,6 +773,24 @@
     }
     return parseInteger(record.adults, 0) + parseInteger(record.children, 0);
   }
+  function tableCardMarkup(tableNumber, occupants) {
+    const occupied = occupants.length > 0;
+    const cardClass = occupied ? "border-red-100 bg-gradient-to-br from-red-50 to-white text-danger" : "border-green-100 bg-gradient-to-br from-green-50 to-white text-success";
+    const statusLabel = occupied ? "Occupied" : "Available";
+    const partiesLabel = occupied ? occupants.length === 1 ? "1 party" : `${occupants.length} parties` : "Free";
+    return `
+    <button
+      class="card-enter flex min-h-[88px] flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition active:scale-[0.97] ${cardClass}"
+      type="button"
+      data-table-number="${escapeHtml(tableNumber)}"
+      data-table-occupied="${occupied ? "true" : "false"}"
+    >
+      <span class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(tableNumber)}</span>
+      <span class="text-[10px] font-extrabold uppercase tracking-wider">${statusLabel}</span>
+      <span class="text-xs font-bold text-slate-500">${escapeHtml(partiesLabel)}</span>
+    </button>
+  `;
+  }
   function matchesCheckInFilters(record, tableQuery, guestQuery) {
     const tableNeedle = normalizeSearchText(tableQuery);
     const guestNeedle = normalizeSearchText(guestQuery);
@@ -1042,6 +1060,9 @@
         checkinGuestSearchInput: document.querySelector("#checkinGuestSearchInput"),
         checkinTableBody: document.querySelector("#checkinTableBody"),
         paymentTableBody: document.querySelector("#paymentTableBody"),
+        tablesGrid: document.querySelector("#tablesGrid"),
+        tablesAvailableCount: document.querySelector("#tablesAvailableCount"),
+        tablesOccupiedCount: document.querySelector("#tablesOccupiedCount"),
         tabButtons: Array.from(document.querySelectorAll("[data-tab-target]")),
         tabPanels: Array.from(document.querySelectorAll("[data-tab-panel]")),
         messageArea: document.querySelector("#messageArea"),
@@ -1211,6 +1232,49 @@
       this.elements.paymentTableBody.innerHTML = records.length ? records.map((record) => paymentCardMarkup(record)).join("") : emptyCardsMarkup("No payment items queued.");
       this.updateStatistics(this._lastCheckIns || [], records);
     }
+    renderTables(tableNumbers, checkIns = []) {
+      if (!this.elements.tablesGrid) {
+        return;
+      }
+      if (!tableNumbers.length) {
+        this.elements.tablesGrid.innerHTML = emptyCardsMarkup("No restaurant tables configured for this property.");
+        if (this.elements.tablesAvailableCount) {
+          this.elements.tablesAvailableCount.textContent = "0";
+        }
+        if (this.elements.tablesOccupiedCount) {
+          this.elements.tablesOccupiedCount.textContent = "0";
+        }
+        return;
+      }
+      const activeByTable = /* @__PURE__ */ new Map();
+      checkIns.filter((record) => record.checkedOut !== true).forEach((record) => {
+        const key = normalizeTable(record.tableNumber);
+        if (!key) {
+          return;
+        }
+        if (!activeByTable.has(key)) {
+          activeByTable.set(key, []);
+        }
+        activeByTable.get(key).push(record);
+      });
+      let available = 0;
+      let occupied = 0;
+      this.elements.tablesGrid.innerHTML = tableNumbers.map((tableNumber) => {
+        const occupants = activeByTable.get(normalizeTable(tableNumber)) || [];
+        if (occupants.length) {
+          occupied += 1;
+        } else {
+          available += 1;
+        }
+        return tableCardMarkup(tableNumber, occupants);
+      }).join("");
+      if (this.elements.tablesAvailableCount) {
+        this.elements.tablesAvailableCount.textContent = String(available);
+      }
+      if (this.elements.tablesOccupiedCount) {
+        this.elements.tablesOccupiedCount.textContent = String(occupied);
+      }
+    }
     playSuccessAnimation() {
       const toast = this.elements.successToast;
       const button = this.elements.checkInButton;
@@ -1261,7 +1325,13 @@
     setMobileView(viewName) {
       const workspace = document.querySelector(".main-workspace");
       if (workspace) {
-        workspace.classList.remove("mobile-view-search", "mobile-view-checkin", "mobile-view-checkins", "mobile-view-payments");
+        workspace.classList.remove(
+          "mobile-view-search",
+          "mobile-view-checkin",
+          "mobile-view-checkins",
+          "mobile-view-payments",
+          "mobile-view-tables"
+        );
         workspace.classList.add(`mobile-view-${viewName}`);
       }
       document.querySelectorAll("[data-mobile-view]").forEach((button) => {
@@ -1441,6 +1511,35 @@
   }
   function getCurrentUser() {
     return sessionStorage.getItem(AUTH_KEY) || "";
+  }
+
+  // tables-kca.txt
+  var tables_kca_default = "";
+
+  // tables-ktb.txt
+  var tables_ktb_default = "1,2,3,5,6,20,21,22,23,24,25,30,31,32,33,34,35,36,40,41,42,43,50,51,52,53,54,55,56,57,58,60,70";
+
+  // js/tables.js
+  function parseTableList(rawText) {
+    const seen = /* @__PURE__ */ new Set();
+    const tables = [];
+    String(rawText || "").split(",").map((value) => normalizeText(value)).filter(Boolean).forEach((table) => {
+      const key = table.toUpperCase().replace(/\s+/g, "");
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      tables.push(table);
+    });
+    return tables;
+  }
+  var TABLES_BY_BRAND = {
+    KCA: parseTableList(tables_kca_default),
+    KTB: parseTableList(tables_ktb_default)
+  };
+  function getTablesForUser(username) {
+    const brand = String(username || "").trim().toUpperCase();
+    return TABLES_BY_BRAND[brand] || [];
   }
 
   // js/xmlParser.js
@@ -1725,6 +1824,16 @@
           this.handleCorrectStatus();
         }
       });
+      elements.tablesGrid?.addEventListener("click", (event) => {
+        const tableButton = event.target.closest("[data-table-number]");
+        if (!tableButton) {
+          return;
+        }
+        this.handleTableBoardClick(
+          tableButton.dataset.tableNumber,
+          tableButton.dataset.tableOccupied === "true"
+        );
+      });
       document.querySelector("#modalCloseButton").addEventListener("click", () => {
         this.ui.closeModal();
         this.focusSearch();
@@ -1777,6 +1886,7 @@
       }));
       this.ui.renderCheckIns(checkInsForTable);
       this.ui.renderPayments(paymentForTable);
+      this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
       const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
       const manualReady = Boolean(this.selectedGuest?.statusOverride);
       this.ui.setCheckInEnabled(filesReady || manualReady);
@@ -1893,6 +2003,44 @@
       this.selectedGuest = guest;
       this.ui.renderGuest(guest);
       this.ui.setMobileView("search");
+    }
+    handleTableBoardClick(tableNumber, occupied) {
+      if (!tableNumber) {
+        return;
+      }
+      if (!occupied) {
+        this.ui.activateTab("checkin");
+        this.ui.elements.tableNumberInput.value = tableNumber;
+        this.focusSearch();
+        this.ui.renderMessage(`Table ${tableNumber} selected. Search a room to check in.`, "info");
+        return;
+      }
+      const occupants = findActiveCheckInsByTable(this.state.checkIns, tableNumber);
+      const body = occupants.length ? `
+        <div class="space-y-2">
+          ${occupants.map((record) => {
+        const guests = parseInteger(record.actualGuests, NaN) >= 0 ? parseInteger(record.actualGuests, 0) : parseInteger(record.adults, 0) + parseInteger(record.children, 0);
+        return `
+                <div class="rounded-2xl bg-slate-50 px-3 py-3">
+                  <div class="text-lg font-black text-slate-900">${escapeHtml(record.roomNumber || record.guestType || "Guest")}</div>
+                  <div class="mt-1 text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "-")}</div>
+                  <div class="mt-2 text-xs font-bold text-slate-500">Guests ${guests}</div>
+                </div>
+              `;
+      }).join("")}
+        </div>
+      ` : `<p class="text-base leading-relaxed">No active parties on this table.</p>`;
+      this.ui.openModal({
+        title: `Table ${tableNumber}`,
+        body,
+        actions: [
+          {
+            label: "Close",
+            variant: "btn-secondary",
+            onClick: () => this.ui.closeModal()
+          }
+        ]
+      });
     }
     async submitHotelCheckIn() {
       if (!this.selectedGuest) {

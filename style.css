@@ -388,13 +388,15 @@ mark {
 
   .main-workspace.mobile-view-checkin .left-panel,
   .main-workspace.mobile-view-checkins .left-panel,
-  .main-workspace.mobile-view-payments .left-panel {
+  .main-workspace.mobile-view-payments .left-panel,
+  .main-workspace.mobile-view-tables .left-panel {
     display: none;
   }
 
   .main-workspace.mobile-view-checkin .right-panel,
   .main-workspace.mobile-view-checkins .right-panel,
-  .main-workspace.mobile-view-payments .right-panel {
+  .main-workspace.mobile-view-payments .right-panel,
+  .main-workspace.mobile-view-tables .right-panel {
     display: flex;
     flex: 1 1 auto;
     min-height: 0;

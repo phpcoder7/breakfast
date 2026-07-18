@@ -252,6 +252,14 @@
                 <i class="fa-solid fa-cash-register"></i>
                 Payment Queue
               </button>
+              <button
+                class="tab-button inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition sm:h-11 sm:rounded-2xl sm:px-4 sm:text-sm"
+                type="button"
+                data-tab-target="tables"
+              >
+                <i class="fa-solid fa-chair"></i>
+                Tables
+              </button>
             </div>
             <div class="flex gap-1.5 sm:gap-2">
               <button id="exportTodayButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-3 sm:text-xs" type="button" disabled>
@@ -383,11 +391,25 @@
           <div data-tab-panel="payments" class="min-h-0 flex-1 overflow-y-auto" hidden>
             <div id="paymentTableBody" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
           </div>
+
+          <div data-tab-panel="tables" class="min-h-0 flex-1 overflow-y-auto" hidden>
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <div class="inline-flex items-center gap-2 rounded-2xl bg-green-50 px-3 py-2 text-xs font-extrabold text-success">
+                <span class="h-2.5 w-2.5 rounded-full bg-success"></span>
+                Available <span id="tablesAvailableCount">0</span>
+              </div>
+              <div class="inline-flex items-center gap-2 rounded-2xl bg-red-50 px-3 py-2 text-xs font-extrabold text-danger">
+                <span class="h-2.5 w-2.5 rounded-full bg-danger"></span>
+                Occupied <span id="tablesOccupiedCount">0</span>
+              </div>
+            </div>
+            <div id="tablesGrid" class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6"></div>
+          </div>
         </section>
       </main>
 
       <!-- Mobile bottom navigation -->
-      <nav class="mobile-bottom-nav mt-2 grid shrink-0 grid-cols-4 gap-1 rounded-2xl bg-white p-1.5 shadow-card md:hidden">
+      <nav class="mobile-bottom-nav mt-2 grid shrink-0 grid-cols-5 gap-1 rounded-2xl bg-white p-1.5 shadow-card md:hidden">
         <button class="mobile-nav-btn inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold text-slate-500" type="button" data-mobile-view="search">
           <i class="fa-solid fa-magnifying-glass text-base"></i>
           <span>Search</span>
@@ -403,6 +425,10 @@
         <button class="mobile-nav-btn tab-button inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold" type="button" data-tab-target="payments" data-mobile-view="payments">
           <i class="fa-solid fa-cash-register text-base"></i>
           <span>Pay</span>
+        </button>
+        <button class="mobile-nav-btn tab-button inline-flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold" type="button" data-tab-target="tables" data-mobile-view="tables">
+          <i class="fa-solid fa-chair text-base"></i>
+          <span>Tables</span>
         </button>
       </nav>
     </div>

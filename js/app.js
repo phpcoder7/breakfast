@@ -19,8 +19,10 @@ import { markPaymentPaid, syncPaymentList } from "./payment.js";
 import { exactRoomMatch, searchGuests } from "./search.js";
 import { BreakfastUI } from "./ui.js";
 import { getBrandLogo, getCurrentUser, isLoggedIn, login, logout } from "./auth.js";
+import { getTablesForUser } from "./tables.js";
 import {
   BREAKFAST_STATUS,
+  escapeHtml,
   normalizeRoom,
   parseInteger,
   readStoredState,
@@ -177,6 +179,16 @@ class BreakfastApp {
         this.handleCorrectStatus();
       }
     });
+    elements.tablesGrid?.addEventListener("click", (event) => {
+      const tableButton = event.target.closest("[data-table-number]");
+      if (!tableButton) {
+        return;
+      }
+      this.handleTableBoardClick(
+        tableButton.dataset.tableNumber,
+        tableButton.dataset.tableOccupied === "true"
+      );
+    });
     document.querySelector("#modalCloseButton").addEventListener("click", () => {
       this.ui.closeModal();
       this.focusSearch();
@@ -241,6 +253,7 @@ class BreakfastApp {
 
     this.ui.renderCheckIns(checkInsForTable);
     this.ui.renderPayments(paymentForTable);
+    this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
     const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
     const manualReady = Boolean(this.selectedGuest?.statusOverride);
     this.ui.setCheckInEnabled(filesReady || manualReady);
@@ -376,6 +389,55 @@ class BreakfastApp {
     this.selectedGuest = guest;
     this.ui.renderGuest(guest);
     this.ui.setMobileView("search");
+  }
+
+  handleTableBoardClick(tableNumber, occupied) {
+    if (!tableNumber) {
+      return;
+    }
+
+    if (!occupied) {
+      this.ui.activateTab("checkin");
+      this.ui.elements.tableNumberInput.value = tableNumber;
+      this.focusSearch();
+      this.ui.renderMessage(`Table ${tableNumber} selected. Search a room to check in.`, "info");
+      return;
+    }
+
+    const occupants = findActiveCheckInsByTable(this.state.checkIns, tableNumber);
+    const body = occupants.length
+      ? `
+        <div class="space-y-2">
+          ${occupants
+            .map((record) => {
+              const guests =
+                parseInteger(record.actualGuests, NaN) >= 0
+                  ? parseInteger(record.actualGuests, 0)
+                  : parseInteger(record.adults, 0) + parseInteger(record.children, 0);
+              return `
+                <div class="rounded-2xl bg-slate-50 px-3 py-3">
+                  <div class="text-lg font-black text-slate-900">${escapeHtml(record.roomNumber || record.guestType || "Guest")}</div>
+                  <div class="mt-1 text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "-")}</div>
+                  <div class="mt-2 text-xs font-bold text-slate-500">Guests ${guests}</div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+      : `<p class="text-base leading-relaxed">No active parties on this table.</p>`;
+
+    this.ui.openModal({
+      title: `Table ${tableNumber}`,
+      body,
+      actions: [
+        {
+          label: "Close",
+          variant: "btn-secondary",
+          onClick: () => this.ui.closeModal()
+        }
+      ]
+    });
   }
 
   async submitHotelCheckIn() {
