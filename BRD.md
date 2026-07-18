@@ -1,314 +1,267 @@
 # Business Requirements Document (BRD)
 
-## Breakfast Check-in System
+## Restaurant Buffet Operations Platform (RBOP)
 
 | Field | Value |
 | --- | --- |
-| Product name | Breakfast Check-in |
-| Document type | Business / Functional / Technical BRD |
+| Product name | Restaurant Buffet Operations Platform (RBOP) |
+| Document type | Master business / functional / technical BRD |
+| Version | 3.0 (Merged AS-IS + RBOP Target) |
 | Audience | Software engineers, QA, product owners, AI coding agents |
-| Purpose | Complete rebuild reference from zero |
+| Purpose | Controlled specification for expanding Breakfast Check-in into multi-tenant SaaS while preserving all current capabilities |
 | Language | English |
-| Current live deployment | `https://phpcoder7.github.io/breakfast/` |
-| Implementation basis | Current production codebase in this repository |
-| Status legend | **REQ** = required product behavior · **IMPL** = current implementation fact · **GAP** = known mismatch / risk |
+| Source proposal | `RBOP_BRD_v2.md` (left unchanged) |
+| Current live Breakfast app | `https://phpcoder7.github.io/breakfast/` |
+| Decision on Breakfast features | **Retain and expand** all current Breakfast capabilities inside RBOP |
+
+### Status legend
+
+| Tag | Meaning |
+| --- | --- |
+| **AS-IS** | Behavior implemented in the current Breakfast Check-in application |
+| **TARGET** | Required SaaS behavior for RBOP |
+| **TRANSITION** | Compatibility or migration requirement during rebuild |
+| **DEFERRED** | Roadmap item outside the first RBOP release |
+| **KNOWN GAP** | Current defect, ambiguity, or risk that must be corrected or consciously managed |
+
+### ID namespaces
+
+| Prefix | Scope |
+| --- | --- |
+| `ASIS-*` | Current Breakfast baseline |
+| `RBOP-FR-*` | Target functional requirements |
+| `RBOP-NFR-*` | Target non-functional requirements |
+| `TRANS-*` | Transition / migration requirements |
+| `GAP-*` | Known current gaps |
 
 ---
 
-## 1. Document control and purpose
+# Part A — Document governance
 
-### 1.1 Purpose
-This BRD defines the complete business, functional, data, UX, and technical specification of the Breakfast Check-in application so that any programmer or AI agent can rebuild an equivalent system without reverse-engineering the code.
+## A.1 Purpose
+This BRD is the master product contract for RBOP. It:
+1. Preserves the authoritative AS-IS Breakfast Check-in specification.
+2. Defines the TARGET multi-tenant SaaS platform from `RBOP_BRD_v2.md`.
+3. Explicitly retains and adapts all current Breakfast workflows, rules, reports, and UX patterns.
+4. Provides a phased migration path so AI agents and engineers can rebuild without losing operational parity.
 
-### 1.2 Scope
-In scope:
-- Offline-capable restaurant host station for breakfast service
-- Two-property branding (KCA / KTB)
-- Daily OPERA XML import and guest merge
-- Guest search, check-in, late arrivals, checkout
-- Table availability / shared seating
-- Payment queue and Excel exports
-- Browser persistence for one operating day
-- Static deployment (local folder and GitHub Pages)
+## A.2 Scope summary
 
-Out of scope (current product):
-- Backend server, database, or API
-- Secure enterprise authentication / SSO
-- Multi-device real-time sync
-- Guest PMS write-back to OPERA
-- Automated billing / POS payment capture
-- Multi-language UI
+### Included in RBOP target release
+- Multi-tenant SaaS
+- Secure authentication and RBAC
+- Restaurant → Floor → Dining Area → Table hierarchy
+- Breakfast, Lunch, Dinner meal sessions
+- Guest check-in / check-out with real-time updates
+- Dashboard and operational reports
+- Retention of Breakfast XML import, entitlement, payments, late arrivals, shared seating, FO overrides, Apartment guests, and Excel exports
 
-### 1.3 Intended readers
-- Engineers rebuilding or extending the app
-- AI agents generating an equivalent codebase
-- QA writing acceptance tests
-- Operations / Front Office reviewing business rules
+### Excluded from RBOP first release
+- POS
+- Inventory
+- Full reservation system
+- Loyalty
+- Payment gateway
+- Native mobile applications
+- Offline / `file://` station mode as a product requirement
 
-### 1.4 Terminology
+### Deferred roadmap
+- Direct PMS API integration (XML remains interim)
+- POS integration
+- Reservations
+- Mobile apps
+- Loyalty
+- Reserved table status
+
+## A.3 Product objectives
+1. Operate buffet check-in for Breakfast, Lunch, and Dinner across multiple tenants/restaurants.
+2. Preserve proven Breakfast host workflows and business rules.
+3. Provide secure multi-user, multi-device, real-time operations.
+4. Enforce table and meal capacity with durable history.
+5. Deliver dashboards and accounting/operational reports without destructive day wipes.
+6. Migrate KCA/KTB from hard-coded brands into tenant/restaurant configuration.
+
+## A.4 Terminology
 
 | Term | Meaning |
 | --- | --- |
-| Host | Restaurant staff using the station |
-| FO | Front Office |
-| Meal Plan XML | Daily OPERA meal-plan report |
-| Package Forecast XML | Daily OPERA package/product forecast |
-| Guest | Merged searchable hotel reservation record |
-| Check-in record | One breakfast seating event for a room/party |
-| Payment queue | Derived list of chargeable check-ins |
-| Included | Breakfast covered by package / meal plan |
-| Payment | Breakfast must be charged |
-| Unknown | Package not recognized |
-| Entitlement | Number of included breakfast covers |
-| Late arrival | Additional guests joining an already active check-in |
-| Operating day | Calendar day key `YYYY-MM-DD` used for state validity |
-| Brand / property | KCA or KTB login identity |
-
-### 1.5 Product objectives
-1. Enable fast breakfast check-in at the restaurant host station.
-2. Decide breakfast entitlement from OPERA Meal Plan + Package Forecast.
-3. Track seated guests by table in real time.
-4. Maintain a payment queue for chargeable covers.
-5. Export operational and accounting Excel reports.
-6. Work without a backend and support offline / local file use.
-
-### 1.6 Assumptions
-- Hosts use Chrome or Edge on Windows tablets/PCs.
-- Daily XML files are exported from OPERA in the supported formats.
-- One station browser profile is used per property during service.
-- Credentials are station convenience credentials, not high-security auth.
-- Table lists are configured per brand in text files and bundled into the app.
+| Tenant | Isolated customer organization in SaaS |
+| Restaurant | Operating unit inside a tenant |
+| Floor | Physical floor inside a restaurant |
+| Dining Area | Named seating zone inside a floor (not a hotel guest room) |
+| Hotel room number | Guest accommodation identifier from PMS/OPERA |
+| Meal type | One of Breakfast, Lunch, Dinner |
+| Meal session | One meal type on one business date with open/close times, capacity, menu, status |
+| Authentication session | Logged-in user browser/API session |
+| Hostess | Operational role for search, check-in/out, table changes |
+| Supervisor | Administrative + operational role |
+| Waiter | Read-only operational viewer |
+| FO | Front Office override capability retained in Breakfast module |
+| Entitlement | Included breakfast covers for hotel guests |
+| Late arrival | Additional guests joining an active check-in |
+| Shared seating | Multiple parties on one table within seating capacity |
+| Payment queue | Chargeable check-ins awaiting/paid status |
+| AS-IS app | Current static Breakfast Check-in system |
 
 ---
 
-## 2. Business context and users
+# Part B — AS-IS Breakfast baseline (authoritative)
 
-### 2.1 Properties
-The application serves two hotel brands/properties:
+> Everything in Part B documents the **current implemented product**. Rebuilds of the legacy app or Breakfast parity inside RBOP must honor these rules unless a TARGET/TRANSITION statement explicitly changes them.
 
-| Username | Password | Logo | Table config file |
+## B.1 Business context (AS-IS)
+
+### Properties
+| Username | Password | Logo | Table config |
 | --- | --- | --- | --- |
 | `KCA` | `KCAadmin` | `assets/logos/kca.svg` | `tables-kca.txt` |
 | `KTB` | `KTBadmin` | `assets/logos/ktb.svg` | `tables-ktb.txt` |
 
-**IMPL:** Username is trimmed and uppercased; password is exact and case-sensitive.  
-**IMPL:** Auth is stored in `sessionStorage` key `breakfast-auth-user`.  
-**GAP:** Operational `localStorage` state is global (not brand-scoped). Logging into the other brand on the same browser can show the previous brand’s guests/check-ins.
+- Username trimmed/uppercased; password exact/case-sensitive.
+- Auth in `sessionStorage` key `breakfast-auth-user`.
+- Operational state in `localStorage` key `breakfast-checkin-state` (global, not brand-scoped).
 
-### 2.2 Roles
-
+### Roles (AS-IS)
 | Role | Capabilities |
 | --- | --- |
 | Restaurant host | Load XML, search, check in, manage tables, mark paid, export |
-| Front Office override | Manual guest entry and Correct Status when OPERA data is wrong |
+| FO override | Manual guest + Correct Status |
 
-There is no role hierarchy beyond brand login; both accounts have full station features.
+### Daily lifecycle (AS-IS)
+1. Sign in.
+2. Load Meal Plan XML + Package Forecast XML.
+3. Search and check guests into tables.
+4. Manage late arrivals, shared tables, checkout, payments.
+5. Export reports.
+6. New Day downloads both reports then clears the day.
 
-### 2.3 Daily operating lifecycle
-1. Host signs in.
-2. Host loads Meal Plan XML and Package Forecast XML.
-3. Host searches rooms and checks guests into tables.
-4. Host manages late arrivals, shared tables, checkout, and payments.
-5. Host exports reports as needed.
-6. Host starts **New Day** to download both reports and clear the day.
+## B.2 Functional requirements (AS-IS)
 
-### 2.4 Privacy constraints
-- Daily OPERA XML files contain guest PII and must not be committed to git.
-- Persisted browser state also contains guest PII for the current day.
-- Credentials are visible in frontend source and must not be treated as secure internet auth.
-
----
-
-## 3. Functional requirements
-
-### 3.1 Authentication and branding
-
+### Authentication
 | ID | Requirement |
 | --- | --- |
-| FR-AUTH-01 | System shall present a login screen before the main app. |
-| FR-AUTH-02 | System shall accept only configured brand credentials. |
-| FR-AUTH-03 | Successful login shall store the brand username for the browser session. |
-| FR-AUTH-04 | Logout shall clear session auth and return to login. |
-| FR-AUTH-05 | Brand logo and table list shall be selected from the logged-in user. |
-| FR-AUTH-06 | Logout shall not automatically clear operational day data. |
+| ASIS-AUTH-01 | Login screen before main app |
+| ASIS-AUTH-02 | Only configured brand credentials |
+| ASIS-AUTH-03 | Store brand username for browser session |
+| ASIS-AUTH-04 | Logout clears session auth |
+| ASIS-AUTH-05 | Brand logo and table list from logged-in user |
+| ASIS-AUTH-06 | Logout does not clear operational day data |
 
-### 3.2 XML import
-
+### XML import
 | ID | Requirement |
 | --- | --- |
-| FR-XML-01 | Host can upload Meal Plan XML via file picker. |
-| FR-XML-02 | Host can upload Package Forecast XML via file picker. |
-| FR-XML-03 | Invalid XML, wrong root, missing required columns, or empty rows shall be rejected with an error message. |
-| FR-XML-04 | Successful load shall mark the file as Loaded and store its filename. |
-| FR-XML-05 | Hotel search/check-in shall remain disabled until both files are loaded, unless an FO override guest is selected. |
-| FR-XML-06 | When both files are present, system shall merge them into searchable guests and persist state. |
+| ASIS-XML-01 | Upload Meal Plan XML |
+| ASIS-XML-02 | Upload Package Forecast XML |
+| ASIS-XML-03 | Reject invalid XML / wrong root / missing columns / empty rows |
+| ASIS-XML-04 | Mark loaded + store filename |
+| ASIS-XML-05 | Hotel search disabled until both files loaded unless FO override guest selected |
+| ASIS-XML-06 | Merge guests when both files present and persist |
 
-### 3.3 Search and Guest Information
-
+### Search / Guest Information
 | ID | Requirement |
 | --- | --- |
-| FR-SEARCH-01 | Search shall match room number, first/last/full name, and confirmation number. |
-| FR-SEARCH-02 | Search shall be case-insensitive substring matching; room match shall ignore leading zeros. |
-| FR-SEARCH-03 | Search shall show at most 8 results. |
-| FR-SEARCH-04 | Arrow keys shall navigate results; Enter shall select exact room match if present, else highlighted/first result. |
-| FR-SEARCH-05 | Selecting a guest shall render Guest Information and activate Check In. |
-| FR-SEARCH-06 | Guest Information shall show room, name, adults, children, meal plan/package, arrival, departure, BF qty, status badge, and Correct Status. |
-| FR-SEARCH-07 | Recent rooms (max 6, in-memory only) shall be available as quick chips. |
+| ASIS-SEARCH-01 | Match room, names, confirmation |
+| ASIS-SEARCH-02 | Case-insensitive; room ignores leading zeros |
+| ASIS-SEARCH-03 | Max 8 results |
+| ASIS-SEARCH-04 | Arrows navigate; Enter prefers exact room |
+| ASIS-SEARCH-05 | Selection shows Guest Information and Check In |
+| ASIS-SEARCH-06 | Panel shows room, name, adults, children, meal/package, arrival/departure, BF qty, status, Correct Status |
+| ASIS-SEARCH-07 | Recent rooms max 6 (memory only) |
 
-### 3.4 Check-in types
-
+### Check-in types
 | ID | Requirement |
 | --- | --- |
-| FR-CI-01 | Hotel check-in requires selected guest + table number. |
-| FR-CI-02 | Actual guests defaults to adults + children when blank. |
-| FR-CI-03 | If actual guests exceed breakfast entitlement for included status, host must confirm before continuing. |
-| FR-CI-04 | Active hotel check-in for the same room shall open Late Arrivals instead of creating a duplicate. |
-| FR-CI-05 | After checkout, the same room may check in again as a new record. |
-| FR-CI-06 | Walk-In check-in captures name, adults, children, table; always payment required. |
-| FR-CI-07 | Apartment check-in captures apartment number, name, adults, children, table; always payment required; unit price AED 120. |
-| FR-CI-08 | Manual Guest (FO) can create/replace a hotel guest and set status/qty even when XMLs are not loaded. |
-| FR-CI-09 | Correct Status can override breakfast status, qty, and meal-plan note for the selected guest. |
+| ASIS-CI-01 | Hotel check-in needs guest + table |
+| ASIS-CI-02 | Actual guests default adults + children |
+| ASIS-CI-03 | Included entitlement overrun requires confirmation |
+| ASIS-CI-04 | Active same-room hotel check-in opens Late Arrivals |
+| ASIS-CI-05 | After checkout, same room may check in again |
+| ASIS-CI-06 | Walk-In always payment required |
+| ASIS-CI-07 | Apartment always payment required; AED 120 |
+| ASIS-CI-08 | Manual Guest (FO) works without XMLs |
+| ASIS-CI-09 | Correct Status overrides status/qty/meal note |
 
-### 3.5 Payments
-
+### Payments
 | ID | Requirement |
 | --- | --- |
-| FR-PAY-01 | Payment queue shall include Walk-In, Apartment, hotel `payment` status, and entitlement overruns. |
-| FR-PAY-02 | Standard unit price = AED 150; Apartment unit price = AED 120. |
-| FR-PAY-03 | Entitlement overrun charges only `extraGuests`; other payment cases charge actual guests (fallback adults+children). |
-| FR-PAY-04 | Paid button marks the record paid immediately with timestamp; no confirm/undo. |
-| FR-PAY-05 | Payment cards show reason and unpaid/paid state; prices appear in accounting export, not on cards. |
-| FR-PAY-06 | Queue sorts unpaid first, then newest first. |
+| ASIS-PAY-01 | Queue includes Walk-In, Apartment, hotel `payment`, entitlement overruns |
+| ASIS-PAY-02 | AED 150 standard; AED 120 apartment |
+| ASIS-PAY-03 | Overrun charges `extraGuests` only |
+| ASIS-PAY-04 | Paid marks immediately with timestamp |
+| ASIS-PAY-05 | Prices in accounting export, not payment cards |
+| ASIS-PAY-06 | Unpaid first, then newest |
 
-**GAP vs older README:** `unknown` status alone does **not** enter the payment queue in current code.
-
-### 3.6 Late arrivals
-
+### Late arrivals / tables / checkout / today / day
 | ID | Requirement |
 | --- | --- |
-| FR-LATE-01 | Late arrivals can be started from duplicate hotel check-in flow or Guests button on Today’s Check-ins card. |
-| FR-LATE-02 | Host enters additional guests (>= 1). |
-| FR-LATE-03 | System adds to `actualGuests`, recalculates extras/entitlement, optionally updates table. |
-| FR-LATE-04 | Paid status resets to unpaid when late arrivals are applied. |
+| ASIS-LATE-01 | Late arrivals from duplicate room flow or Guests button |
+| ASIS-LATE-02 | Additional guests >= 1 |
+| ASIS-LATE-03 | Recalculate extras/entitlement; optional table update |
+| ASIS-LATE-04 | Paid status resets on late arrivals |
+| ASIS-TBL-01 | Table identity case/space-insensitive |
+| ASIS-TBL-02 | Occupied table prompt: Cancel / Sit together / Check Out & Continue |
+| ASIS-TBL-03 | Sit together keeps existing parties |
+| ASIS-TBL-04 | Check Out & Continue checks out all active occupants |
+| ASIS-TBL-05 | Tables board Available green / Occupied red |
+| ASIS-TBL-06 | Available click prefills Check In table |
+| ASIS-TBL-07 | Occupied click shows occupants |
+| ASIS-TBL-08 | Change table from Today’s / Payment cards |
+| ASIS-TBL-09 | Check Out confirms and sets `checkedOut` + `checkedOutAt` |
+| ASIS-TBL-10 | History retained after checkout |
+| ASIS-TODAY-01 | Cards show time/room/name/status/table/guests/type |
+| ASIS-TODAY-02 | Active actions: Change Table, Guests, Check Out |
+| ASIS-TODAY-03 | Checked-out muted with Out time |
+| ASIS-TODAY-04 | Filters: table; room/name |
+| ASIS-TODAY-05 | Card click shows Guest Information |
+| ASIS-TODAY-06 | Stats use full day, not filter |
+| ASIS-DAY-01 | New Day confirms then downloads both reports |
+| ASIS-DAY-02 | Export failure cancels clear |
+| ASIS-DAY-03 | Clear guests/check-ins/payments/XML; auth remains |
+| ASIS-EXP-01 | Export Breakfast Report |
+| ASIS-EXP-02 | Export Accounting Report |
 
-### 3.7 Tables, shared seating, checkout
+## B.3 Business rules (AS-IS)
 
-| ID | Requirement |
-| --- | --- |
-| FR-TBL-01 | Table identity is case-insensitive and space-insensitive. |
-| FR-TBL-02 | Assigning an occupied table prompts: Cancel / Sit together / Check Out & Continue. |
-| FR-TBL-03 | Sit together leaves existing parties active and continues. |
-| FR-TBL-04 | Check Out & Continue checks out all active occupants on that table, then continues. |
-| FR-TBL-05 | Tables tab (after Payment Queue) shows configured brand tables as Available (green) or Occupied (red). |
-| FR-TBL-06 | Available table click pre-fills Check In table number and focuses search. |
-| FR-TBL-07 | Occupied table click shows read-only occupant list (room, name, guest count). |
-| FR-TBL-08 | Host can change table number from Today’s Check-ins and Payment Queue cards. |
-| FR-TBL-09 | Check Out from Today’s Check-ins requires confirmation and sets `checkedOut` + `checkedOutAt`. |
-| FR-TBL-10 | Checked-out records remain in history/export; table becomes free for new seating. |
+### Package codes
+Included: `BFAAD`, `BFAIN`, `BFCAD`, `BFCIN`, `UPSBB1`, `WEB_BFSA`, `BB`, `CLB`  
+Payment: `RO`
 
-### 3.8 Today’s Check-ins
+### Status precedence
+1. Meal plan `RO` => `payment`
+2. Else included code in meal/products => `included`
+3. Else any code => `unknown`
+4. Else => `unknown`
 
-| ID | Requirement |
-| --- | --- |
-| FR-TODAY-01 | Cards show time, room, name, status/badge, table, guest count, guest type. |
-| FR-TODAY-02 | Active cards support Change Table, Add Guests (late arrivals), Check Out. |
-| FR-TODAY-03 | Checked-out cards are muted, show Out time, and disable table/guest edits. |
-| FR-TODAY-04 | Separate filters: table number only; room or guest name. |
-| FR-TODAY-05 | Card click (outside action buttons) shows Guest Information. |
-| FR-TODAY-06 | Dashboard statistics remain based on full day list, not filtered results. |
-
-### 3.9 New Day and exports
-
-| ID | Requirement |
-| --- | --- |
-| FR-DAY-01 | New Day confirms, then downloads Breakfast Report and Accounting Report. |
-| FR-DAY-02 | If either export fails, day clear is cancelled. |
-| FR-DAY-03 | Successful New Day clears check-ins, payments, guests, XML raw data/flags, searches, and form fields; auth remains. |
-| FR-EXP-01 | Host can export Breakfast Report independently. |
-| FR-EXP-02 | Host can export Accounting Report independently. |
-
----
-
-## 4. Business rules
-
-### 4.1 Breakfast package codes
-
-Included codes (`BREAKFAST_CODES`):
-
-| Code | Description |
-| --- | --- |
-| `BFAAD` | Breakfast Adult Add On Package |
-| `BFAIN` | Breakfast Adult Included in Rate |
-| `BFCAD` | Breakfast Child Add On Package |
-| `BFCIN` | Breakfast Child Included in Rate |
-| `UPSBB1` | Breakfast 1 Person |
-| `WEB_BFSA` | Breakfast Adult |
-| `BB` | Breakfast Package |
-| `CLB` | Club Lounge (Breakfast Included) |
-
-Payment codes (`NO_BREAKFAST_CODES`):
-
-| Code | Description |
-| --- | --- |
-| `RO` | Room Only |
-
-### 4.2 Status decision precedence
-1. Meal plan `RO` => `payment` (even if breakfast products exist).
-2. Else if meal plan or any product is an included breakfast code => `included`.
-3. Else if any meal/product code exists => `unknown`.
-4. Else => `unknown`.
-
-### 4.3 Entitlement quantity
-For `included` guests:
-- Prefer aggregated breakfast package quantity when > 0.
-- Else default to `adults + children`.
-
-Extra guests formula:
+### Entitlement
 ```text
+breakfastQuantity = package breakfast qty > 0 ? that qty : adults + children
 extraGuests = max(0, actualGuests - breakfastQuantity)
-entitlementExceeded = (breakfastStatus == included) AND (extraGuests > 0)
+entitlementExceeded = (status == included) AND (extraGuests > 0)
 ```
 
-### 4.4 Pricing
-
-| Case | Unit price | Chargeable qty |
+### Pricing
+| Case | Unit | Qty |
 | --- | --- | --- |
-| Apartment | AED 120 | actual guests (or adults+children) |
-| Walk-In / hotel payment | AED 150 | actual guests (or adults+children) |
-| Entitlement overrun | AED 150 | `extraGuests` only |
+| Apartment | 120 | actual or adults+children |
+| Walk-In / hotel payment | 150 | actual or adults+children |
+| Entitlement overrun | 150 | extraGuests |
 
-### 4.5 Duplicate room rule
-- Active hotel check-in for same normalized room => Late Arrivals flow.
-- Checked-out hotel room is not considered active; a new check-in is allowed.
+### Occupancy / payments / history
+- Occupied = active check-in on normalized table.
+- Multiple parties may share a table.
+- Payment list regenerated via filter/map/sort.
+- Checkout frees table; keeps history and payment rows.
 
-### 4.6 Table occupancy
-- Occupied = at least one check-in with same normalized table and `checkedOut !== true`.
-- Multiple active parties may share one table (Sit together).
-- Configured table board lists only brand tables; free-text table numbers are still accepted for check-in.
+## B.4 AS-IS data model
 
-### 4.7 Payment sync
-Payment list is always regenerated from check-ins via `syncPaymentList`:
-- Filter with `requiresPayment`
-- Map to payment records
-- Sort unpaid first, then newest timestamp
-
-### 4.8 Checkout history
-Checkout does not delete the check-in. It frees the table and keeps the record for Today’s Check-ins and Breakfast Report. Payment queue entries remain for collection/accounting.
-
----
-
-## 5. Data specification
-
-### 5.1 Persistence keys
-
+### Persistence
 | Store | Key | Contents |
 | --- | --- | --- |
-| `sessionStorage` | `breakfast-auth-user` | Brand username (`KCA` / `KTB`) |
-| `localStorage` | `breakfast-checkin-state` | Full operating-day snapshot |
+| `sessionStorage` | `breakfast-auth-user` | Brand username |
+| `localStorage` | `breakfast-checkin-state` | Day snapshot |
 
-Snapshot is loaded only when `serviceDate === today (YYYY-MM-DD)`. Older snapshots are ignored (not auto-exported or deleted).
+Snapshot valid only when `serviceDate === today`.
 
-### 5.2 Persisted state shape
 ```json
 {
   "guests": [],
@@ -321,398 +274,71 @@ Snapshot is loaded only when `serviceDate === today (YYYY-MM-DD)`. Older snapsho
 }
 ```
 
-### 5.3 Transient (not persisted)
-- Selected guest
-- Search results / active index
-- Recent rooms
-- Active tab / mobile view
-- Open modal / tools panel
-- Current form field values
+Transient: selected guest, search state, recent rooms, tab/view, modal/forms.
 
-### 5.4 Guest object
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Generated |
-| `roomNumber` | string | Normalized |
-| `firstName` / `lastName` / `fullName` | string | |
-| `arrival` / `departure` | string | Source date formats preserved / displayed formatted |
-| `adults` / `children` | number | |
-| `confirmationNumber` | string | |
-| `mealPlan` | string | Code |
-| `products` | string[] | Codes |
-| `productDescriptions` | string[] | |
-| `packageQuantity` | number | |
-| `reservationStatus` | string | Captured; not used to filter |
-| `rateCode` | string | |
-| `breakfastIncluded` | boolean | |
-| `breakfastStatus` | `included` \| `payment` \| `unknown` | |
-| `breakfastQuantity` | number | Entitlement |
-| `guestType` | `Hotel` | Manual/FO also Hotel |
-| `statusOverride` | boolean | FO correction marker |
+### Guest / CheckIn / Payment fields
+Retain all existing fields documented previously:
+- Guest: identity, stay, meal/products, breakfastStatus/Quantity, guestType, statusOverride
+- CheckIn: table, actualGuests, extras, paid/paidAt, checkedOut/checkedOutAt, lateArrivalAdded
+- Payment: reason, chargeableGuests, unitPriceAed, amountAed, paid/paidAt
 
-### 5.5 Check-in record
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Shared with payment id |
-| `timestamp` | ISO string | |
-| `timeLabel` | locale time | |
-| `roomNumber` | string | Or `Walk-In` / `APT {n}` |
-| `guestName` | string | |
-| `adults` / `children` | number | |
-| `tableNumber` | string | |
-| `mealPlan` / `products` | string | |
-| `breakfastStatus` | string | |
-| `actualGuests` | number | |
-| `guestType` | Hotel / Walk-In / Apartment | |
-| `confirmationNumber` | string | |
-| `discount` | string | Apartment stores `20%` |
-| `entitlementExceeded` | boolean | |
-| `extraGuests` | number | |
-| `breakfastQuantity` | number | |
-| `statusOverride` | boolean | |
-| `paid` / `paidAt` | boolean / ISO | |
-| `checkedOut` / `checkedOutAt` | boolean / ISO | Optional until checkout |
-| `lateArrivalAdded` | number | Optional after late arrivals |
+## B.5 AS-IS input/output contracts
 
-### 5.6 Payment record
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Same as check-in id |
-| `timestamp` | ISO | |
-| `displayLocation` | string | Room / Walk-In / APT |
-| `guestName` | string | |
-| `tableNumber` | string | |
-| `guestType` | string | |
-| `reason` | string | Human-readable |
-| `extraGuests` | number | |
-| `entitlementExceeded` | boolean | |
-| `chargeableGuests` | number | |
-| `unitPriceAed` | number | 150 or 120 |
-| `amountAed` | number | qty * unit |
-| `paid` / `paidAt` | boolean / ISO | |
+### Meal Plan XML
+- Root `RS`
+- Rowset namespace `urn:schemas-microsoft-com:xml-analysis:rowset`, element `R`
+- Required headings: Room, Confirmation, Meal Plan
+- Optional: names, arrival/departure, adults/children
 
----
+### Package Forecast XML
+- Root `PKGFORECAST`
+- Blocks `G_RESV_DETAILS` / `G_PRODUCT_GROUP`
+- Fields include confirmation, room, names, products, qty, status, dates, rate
+- Status captured but not filtered
 
-## 6. Input / output contracts
+### Merge
+1. Aggregate forecast by confirmation and room.
+2. Match meal plan by confirmation then room.
+3. Meal plan wins identity/occupancy/meal plan; package fills products/qty.
+4. Unmatched forecast rows become searchable guests.
 
-### 6.1 Meal Plan XML
-- Required root local name: `RS`
-- Rows in namespace `urn:schemas-microsoft-com:xml-analysis:rowset`, element `R`
-- Column map inferred from embedded XSD elements + `saw-sql:columnHeading`
-- Required mapped headings: Room, Confirmation, Meal Plan
-- Also mapped when present: First/Last name, Arrival, Departure, Adults, Children
-- Output rows include `source: "mealPlan"`
+### Table files
+- `tables-kca.txt`, `tables-ktb.txt` comma-separated
+- Bundled via esbuild `--loader:.txt=text`
+- KTB currently populated; KCA may be empty (**KNOWN GAP**)
 
-Reject when:
-- Not parseable XML
-- Wrong root
-- Missing required columns
-- No data rows
+### Excel
+- `breakfast-report-YYYY-MM-DD.xlsx` / sheet `Breakfast Report`
+- `breakfast-accounting-YYYY-MM-DD.xlsx` / sheet `Accounting`
+- Exact columns as current implementation (including Checked Out / Check Out Time and AED accounting columns)
 
-### 6.2 Package Forecast XML
-- Required root local name: `PKGFORECAST`
-- Reservation blocks: `G_RESV_DETAILS`
-- Product group ancestor: `G_PRODUCT_GROUP`
-- Key fields: `CONFIRMATION_NO`, `ROOM`, name fields, `PRODUCTS`, `PRODUCT_ID1`, `PRODUCT_DESC`, qty fields, adults/children, status, arrival/departure, `RATE_CODE`
-- `PRODUCTS` comma-separated, normalized uppercase
-- Output rows include `source: "packageForecast"`
-- Reservation status is stored but not filtered
+## B.6 AS-IS UX
+- Login + main shell with Search/Guest Information and tabs: Check In, Today’s Check-ins, Payment Queue, Tables
+- Responsive iPad/phone behaviors, status colors, card actions, keyboard shortcuts, modals
+- Touch-friendly host station UX is a retained design principle for RBOP
 
-### 6.3 Merge contract
-1. Aggregate forecast by confirmation and by room.
-2. For each Meal Plan row, match confirmation first, else room.
-3. Meal Plan values generally win for identity/occupancy/meal plan; package fills products/descriptions/qty.
-4. Unmatched forecast reservations become searchable hotel guests.
-5. Breakfast status decided by section 4.2.
+## B.7 AS-IS technical baseline
+- Static SPA, `js/app.bundle.js` IIFE, modules under `js/`
+- SheetJS + Font Awesome local; Tailwind CDN
+- Build: `npx esbuild js/app.js --bundle --format=iife --loader:.txt=text --outfile=js/app.bundle.js`
+- GitHub Pages deploy; SW cache versioned manually
+- Offline/`file://` supported for legacy app only
 
-### 6.4 Table config files
-- Files: `tables-kca.txt`, `tables-ktb.txt`
-- Format: comma-separated table numbers on one line
-- Parsed: trim, drop blanks, case-insensitive dedupe, preserve order
-- Bundled into `app.bundle.js` via esbuild text loader
-- Current KTB example:
-  `1,2,3,5,6,20,21,22,23,24,25,30,31,32,33,34,35,36,40,41,42,43,50,51,52,53,54,55,56,57,58,60,70`
-- **IMPL/GAP:** `tables-kca.txt` may be empty; KCA Tables board then shows no configured tables.
-
-### 6.5 Excel outputs
-
-#### Breakfast Report
-- Filename: `breakfast-report-YYYY-MM-DD.xlsx`
-- Sheet: `Breakfast Report`
-- Columns:
-  - Time
-  - Room Number
-  - Guest Name
-  - Adults
-  - Children
-  - Table
-  - Meal Plan
-  - Package
-  - Breakfast Included (`Yes`/`No`)
-  - Guest Type
-  - FO Override (`Yes`/`No`)
-  - Checked Out (`Yes`/`No`)
-  - Check Out Time
-
-Includes all check-ins (active and checked out).
-
-#### Accounting Report
-- Filename: `breakfast-accounting-YYYY-MM-DD.xlsx`
-- Sheet: `Accounting`
-- Columns:
-  - Time
-  - Room / Apartment
-  - Guest
-  - Table
-  - Guest Type
-  - Reason
-  - Extra Guests
-  - Guests Charged
-  - Unit Price (AED)
-  - Amount (AED)
-  - Paid
-  - Paid At
-
-Includes paid and unpaid payment-queue rows.
-
----
-
-## 7. UX specification
-
-### 7.1 Screens
-1. **Login** — username, password, brand logo, error banner
-2. **Main shell**
-   - Header: XML loaders/status, New Day, user, logout, exports/tools
-   - Left: Room Search + Guest Information
-   - Right tabs: Check In | Today’s Check-ins | Payment Queue | Tables
-
-### 7.2 Responsive behavior
-- Desktop/tablet (`md+`): two-column workspace; desktop tabs visible
-- Header tools collapse into Tools menu until `xl`
-- Phone (`<768px`): five-item bottom nav (Search, Check In, Today, Pay, Tables); one side visible at a time
-- Landscape/iPad height compression and safe-area/`100dvh` support
-
-### 7.3 Status colors
-| Color | Meaning |
-| --- | --- |
-| Blue | Active tab / info |
-| Green | Included, success, loaded, available table, paid |
-| Red | Payment required, error, missing file, occupied table, unpaid |
-| Yellow/Amber | Unknown package, warning, loading, FO override note |
-| Orange | Apartment status |
-| Gray | Disabled / checked-out |
-
-### 7.4 Cards and actions
-
-**Today’s Check-ins card**
-- Actions: Change Table, Guests (+ late arrivals), Check Out
-- Body click => Guest Information
-- Checked-out: muted, Out HH:MM:SS, read-only guest count
-
-**Payment card**
-- Unpaid: red + Paid button
-- Paid: green badge
-- Table editable in both states
-- Body click => Guest Information
-
-**Tables board card**
-- Green Available / Red Occupied
-- Counts Available / Occupied
-- Available click => prefill table + Check In
-- Occupied click => occupants modal
-
-### 7.5 Modals
-Reusable modal supports:
-- Confirm (danger/primary)
-- Choice (multi-button)
-- Dynamic forms
-
-Close via X or Escape; focus returns to search in many flows.  
-**GAP:** Closing some promise-based prompts via X/Escape may leave the awaiting Promise unresolved.
-
-### 7.6 Keyboard
-- Search typing filters instantly
-- Up/Down navigate results
-- Enter selects guest
-- Enter on table completes hotel check-in when table filled
-- Escape closes modal
-
-### 7.7 Empty / error states
-- Empty guest panel before selection
-- No check-ins / no matching check-ins
-- No payment items
-- No restaurant tables configured for property
-- File load/parse errors shown in message banner
-
----
-
-## 8. Technical reference
-
-### 8.1 Architecture
-Static, backend-free SPA:
-- Browser executes `js/app.bundle.js` (IIFE)
-- Maintainable sources are ES modules under `js/`
-- UI: `index.html` + Tailwind CDN utilities + `style.css`
-- Excel: local SheetJS `vendor/xlsx.full.min.js`
-- Icons: local Font Awesome under `vendor/fontawesome/`
-
-### 8.2 Source modules
-
-| File | Responsibility |
-| --- | --- |
-| `js/app.js` | App orchestration, events, workflows |
-| `js/auth.js` | Login/logout/session brand |
-| `js/xmlParser.js` | Meal Plan + Package Forecast parsers |
-| `js/mergeData.js` | Merge + breakfast decision |
-| `js/search.js` | Guest search |
-| `js/checkin.js` | Check-in/late arrivals/checkout/table helpers |
-| `js/payment.js` | Payment derivation and paid marking |
-| `js/export.js` | Excel reports |
-| `js/ui.js` | Rendering, tabs, modals, cards |
-| `js/tables.js` | Brand table lists |
-| `js/utils.js` | Constants, normalization, storage, formatting |
-
-### 8.3 Build
-After any `js/` or `tables-*.txt` change:
-
-```bash
-npx esbuild js/app.js --bundle --format=iife --loader:.txt=text --outfile=js/app.bundle.js
-```
-
-Also bump `CACHE_NAME` in `service-worker.js` when shipping to GitHub Pages.
-
-**IMPL:** No `package.json`, lockfile, or CI rebuild. Bundle must be committed manually.
-
-### 8.4 Offline / `file://`
-- Bundle avoids ES-module CORS/module blocks on `file://`
-- XML uses local file inputs (`File.text()`), no server needed
-- Service worker is disabled on `file://`
-- **GAP:** Tailwind CDN and Google Fonts need network on first cold load; custom `style.css` alone does not reproduce all Tailwind utilities
-
-### 8.5 PWA / service worker
-- `manifest.webmanifest` relative start/scope
-- `service-worker.js` network-first with cache fallback
-- Precaches shell, bundle, SheetJS, FA CSS, logos, favicon
-- Manual cache version string (example current: `breakfast-checkin-v14`)
-
-### 8.6 Deployment
-- GitHub Actions workflow `.github/workflows/pages.yml`
-- Deploys repository root on push to `main` (no build/test step)
-- `.nojekyll` present
-- `.gitignore` ignores `*.xml` / `*.XML`
-
----
-
-## 9. Non-functional requirements
-
-| ID | Category | Requirement |
-| --- | --- | --- |
-| NFR-01 | Performance | Instant local search and card filter while typing on host tablets |
-| NFR-02 | Reliability | Persist after every successful mutating action |
-| NFR-03 | Compatibility | Latest Chrome/Edge desktop and tablet |
-| NFR-04 | Offline | Core JS/data path works from local folder; HTTPS for PWA install |
-| NFR-05 | Privacy | Do not publish daily XML guest files |
-| NFR-06 | Security | Treat credentials as station convenience only |
-| NFR-07 | Maintainability | Keep readable modules; regenerate bundle after edits |
-| NFR-08 | Accessibility | Large touch targets (`min-h-touch`), readable status colors |
-| NFR-09 | Retention | Operating state valid for current calendar day only |
-| NFR-10 | Operability | New Day must export before wipe |
-
----
-
-## 10. Acceptance criteria
-
-### 10.1 Authentication
-- Login with `KTB`/`KTBadmin` shows KTB logo and KTB tables.
-- Wrong password shows error and stays on login.
-- Logout returns to login; day data remains until New Day/clear.
-
-### 10.2 XML + merge
-- Loading invalid Meal Plan fails clearly; search stays disabled.
-- Loading both valid files enables search and merges guests.
-- Package-only rooms appear in search.
-- `RO` guest shows payment status.
-- Known breakfast code shows included + BF qty.
-- Unknown code shows yellow unknown status.
-
-### 10.3 Check-in flows
-- Hotel check-in creates Today’s Check-ins card with table and guest count.
-- Included overrun prompts confirmation and adds payment for extras only.
-- Second active check-in for same room opens Late Arrivals and updates count.
-- Walk-In and Apartment appear in payment queue with correct unit prices.
-- Manual Guest works without XMLs and can check in.
-
-### 10.4 Tables
-- Occupied table prompt offers Sit together / Check Out & Continue / Cancel.
-- Sit together allows two active rooms on one table.
-- Tables board colors update after check-in/checkout.
-- Available table click prefills Check In.
-- Occupied table click lists all active parties.
-
-### 10.5 Checkout / payments / filters
-- Check Out confirms, shows Out time, frees table.
-- Paid marks green immediately.
-- Today filters isolate by table and by room/name independently/combined.
-- Card click shows Guest Information; action buttons do not.
-
-### 10.6 New Day / exports
-- Report and Accounting downloads contain required columns.
-- New Day downloads both then clears guests/check-ins/payments/XML flags.
-- Failed export prevents wipe.
-
-### 10.7 Reconstruction checklist
-1. Create static HTML/CSS/JS structure equivalent to module map.
-2. Implement auth + brand logos + brand table files.
-3. Implement XML parsers and merge/breakfast rules exactly.
-4. Implement search, guest panel, check-in types, late arrivals.
-5. Implement payment derivation and pricing.
-6. Implement shared-table prompt, checkout, Tables board.
-7. Implement Excel exports and New Day sequence.
-8. Persist day snapshot in `localStorage` with date gate.
-9. Bundle for `file://` and configure SW/Pages if deploying.
-10. Pass all acceptance scenarios above.
-
----
-
-## 11. Known implementation discrepancies and risks
-
-Documented as current facts. A faithful rebuild should reproduce these unless product owners explicitly change them.
-
-| ID | Topic | Fact |
-| --- | --- | --- |
-| GAP-01 | Unknown packages | UI flags `unknown`, but Payment Queue does not include unknown-only records |
-| GAP-02 | README duplicates | README says duplicate check-ins need confirmation; code uses Late Arrivals |
-| GAP-03 | Cross-brand storage | One global `localStorage` key for both brands |
-| GAP-04 | KCA tables | `tables-kca.txt` may be empty => empty Tables board for KCA |
-| GAP-05 | Reservation status | Imported but not used to exclude cancelled/due-out/etc. |
-| GAP-06 | Stats vs queue | Dashboard “Pay” count logic can differ from payment queue inclusion |
-| GAP-07 | Bundle process | Browser runs committed bundle; source edits need manual rebuild |
-| GAP-08 | Cache bump | SW cache name must be bumped manually for Pages clients |
-| GAP-09 | Cold offline UI | Tailwind/Fonts CDN required for full styling on first offline-less launch |
-| GAP-10 | Modal promises | Some X/Escape closes may leave awaiting Promise unresolved |
-| GAP-11 | No automated tests | No unit/e2e suite, no CI validation of parsers/exports |
-| GAP-12 | Credentials in client | Passwords are visible in frontend source |
-
----
-
-## 12. Future recommendations
-
-These are **not** current requirements. Reproduce current behavior first, then optionally improve:
-
-1. Brand-scoped storage keys (`breakfast-checkin-state:KCA` / `:KTB`).
-2. Decide product rule for `unknown` (queue vs FO-only) and align README/UI/code.
-3. Populate and validate non-empty `tables-kca.txt`.
-4. Filter Package Forecast by reservation status if operations require it.
-5. Add `package.json` scripts + CI rebuild of `app.bundle.js`.
-6. Replace Tailwind CDN with built CSS for true cold-offline UI.
-7. Resolve modal cancel paths consistently (`resolve(null/false)` on close).
-8. Add fixture-based tests for XML parse, merge, entitlement, payments, exports.
-9. Replace hard-coded passwords with safer station auth if exposed beyond private LAN.
-10. Auto-export previous day if stale snapshot is detected on open.
-
----
-
-## 13. End-to-end workflow (reference)
+## B.8 AS-IS known gaps
+| ID | Topic | Fact | TARGET disposition |
+| --- | --- | --- | --- |
+| GAP-01 | Unknown packages | Flagged but not queued | Corrected in RBOP: FO review + exception/payment workflow |
+| GAP-02 | Duplicate wording | README vs Late Arrivals | Late Arrivals is canonical |
+| GAP-03 | Cross-brand storage | Global localStorage | Replaced by tenant DB isolation |
+| GAP-04 | Empty KCA tables | Board empty | Migrated to managed tables; seed required |
+| GAP-05 | Reservation status unused | Imported only | Configurable filter in TARGET |
+| GAP-06 | Stats vs queue | Can diverge | Dashboard formulas must reconcile |
+| GAP-07 | Manual bundle | No CI rebuild | Replaced by Laravel/Vue build pipeline |
+| GAP-08 | SW cache bump | Manual | Not applicable to SaaS target |
+| GAP-09 | CDN cold offline | Styling gap | Offline excluded from TARGET |
+| GAP-10 | Modal promises | Cancel unresolved | Must resolve cancel paths |
+| GAP-11 | No tests | Missing | Required in TARGET |
+| GAP-12 | Client passwords | Visible | Replaced by secure auth |
 
 ```mermaid
 flowchart TD
@@ -720,85 +346,437 @@ flowchart TD
   loadXml[Load Meal Plan and Package Forecast]
   merge[Merge guests and decide breakfast status]
   search[Search room name or confirmation]
-  selectGuest[Select guest and show Guest Information]
-  chooseType{Check-in type}
-  hotel[Hotel check-in with table]
-  walkIn[Walk-In or Apartment form]
-  late[Late arrivals update]
+  selectGuest[Select guest]
+  hotel[Hotel check-in]
+  walkIn[Walk-In or Apartment]
+  late[Late arrivals]
   tablePrompt{Table occupied?}
   share[Sit together]
   checkoutAll[Check Out and Continue]
-  persist[Sync payments persist refresh UI]
-  tablesBoard[Tables board available or occupied]
-  pay[Payment Queue mark Paid]
-  exportReports[Export Breakfast and Accounting]
+  persist[Sync payments and persist]
+  pay[Payment Queue]
+  exportReports[Excel reports]
   newDay[New Day export then clear]
 
-  login --> loadXml --> merge --> search --> selectGuest --> chooseType
-  chooseType --> hotel
-  chooseType --> walkIn
+  login --> loadXml --> merge --> search --> selectGuest
+  selectGuest --> hotel
+  selectGuest --> walkIn
   hotel --> late
   hotel --> tablePrompt
   walkIn --> tablePrompt
   tablePrompt -->|No| persist
-  tablePrompt -->|Yes| share
-  tablePrompt -->|Yes| checkoutAll
-  share --> persist
-  checkoutAll --> persist
-  persist --> tablesBoard
+  tablePrompt -->|Share| share --> persist
+  tablePrompt -->|Checkout| checkoutAll --> persist
   persist --> pay
-  persist --> exportReports
-  exportReports --> newDay
+  persist --> exportReports --> newDay
 ```
 
 ---
 
-## 14. Rebuild guidance for AI agents
+# Part C — TARGET RBOP product
 
-When regenerating this product from zero:
+## C.1 Platform and tenancy
 
-1. Treat this BRD as the product contract.
-2. Prefer current code behavior over outdated README text where they conflict (see GAP list).
-3. Keep the domain split: parse → merge → search → check-in → payment sync → UI render → export.
-4. Preserve exact breakfast codes, prices, filenames, and column headers.
-5. Preserve brand table file mechanism and occupied-table three-way choice.
-6. Preserve day-gated localStorage snapshot and session auth.
-7. Ship a single IIFE bundle for `file://` compatibility.
-8. Do not invent a backend unless explicitly requested.
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-TEN-01 | System shall be multi-tenant SaaS |
+| RBOP-FR-TEN-02 | Every user belongs to exactly one tenant |
+| RBOP-FR-TEN-03 | Tenant data shall be isolated; Tenant A cannot access Tenant B data via UI, API, events, or reports |
+| RBOP-FR-TEN-04 | Each tenant shall have a dedicated PostgreSQL database |
+| RBOP-FR-TEN-05 | KCA and KTB shall migrate to tenant/restaurant records (not hard-coded logins) |
+| RBOP-FR-TEN-06 | A tenant may operate one or more restaurants |
+
+## C.2 Restaurant hierarchy
+
+Hierarchy:
+```text
+Tenant
+  └── Restaurant
+        └── Floor
+              └── Dining Area
+                    └── Table
+```
+
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-ORG-01 | Supervisors can configure floors, dining areas, and tables |
+| RBOP-FR-ORG-02 | Each table has unique identity within restaurant, display number, seating capacity, and operational status |
+| RBOP-FR-ORG-03 | Dining Area naming must never be confused with hotel room numbers |
+| RBOP-FR-ORG-04 | Initial table lists may be imported from legacy `tables-*.txt` files during migration |
+
+## C.3 Meal sessions
+
+Exactly three meal types: Breakfast, Lunch, Dinner.
+
+Each meal session includes:
+- Business date
+- Meal type
+- Opening time
+- Closing time
+- Capacity (total covers for the session)
+- Menu reference/text
+- Status: Planned / Open / Closed
+
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-MEAL-01 | Every check-in belongs to one meal session |
+| RBOP-FR-MEAL-02 | Closed sessions reject new check-ins |
+| RBOP-FR-MEAL-03 | Hostess/Supervisor must select current meal session before operational check-in |
+| RBOP-FR-MEAL-04 | Capacity monitoring shows used/remaining covers and percentage |
+| RBOP-FR-MEAL-05 | Meal capacity is concurrent + cumulative covers; new check-in rejected when remaining covers < requested actual guests |
+
+## C.4 Guest types (TARGET retained set)
+
+| Type | Retained from AS-IS | Notes |
+| --- | --- | --- |
+| Hotel Guest | Yes | PMS/XML-backed |
+| Walk-in Guest | Yes | Always chargeable by default |
+| Apartment Guest | Yes | Retained despite omission in RBOP v2 draft |
+
+## C.5 Roles and permissions
+
+| Capability | Supervisor | Hostess | Waiter |
+| --- | --- | --- | --- |
+| Configure restaurant hierarchy | Yes | No | No |
+| Manage users/roles | Yes | No | No |
+| Open/close meal sessions | Yes | No | No |
+| Import PMS/XML | Yes | No | No |
+| FO Manual Guest / Correct Status | Yes | Yes | No |
+| Search guests | Yes | Yes | View only |
+| Check-in / Check-out | Yes | Yes | No |
+| Late arrivals | Yes | Yes | No |
+| Change tables / shared seating decisions | Yes | Yes | No |
+| Set table Cleaning / Out of Service | Yes | Yes | No |
+| Payment Queue mark paid | Yes | Yes | No |
+| Dashboard | Yes | Yes | Yes |
+| Reports/exports | Yes | Yes | No |
+| View tables/guests live | Yes | Yes | Yes |
+
+Permissions are enforced server-side (Spatie Permission), not only in UI.
+
+## C.6 Table status and capacity
+
+Statuses:
+- Available
+- Occupied
+- Cleaning
+- Out of Service
+- Reserved (**DEFERRED**)
+
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-TBL-01 | Available/Occupied derived from active check-ins unless overridden by Cleaning/Out of Service |
+| RBOP-FR-TBL-02 | Cleaning and Out of Service reject new check-ins |
+| RBOP-FR-TBL-03 | Aggregate active guests on a table cannot exceed seating capacity |
+| RBOP-FR-TBL-04 | Shared seating (multiple parties) is allowed only within capacity |
+| RBOP-FR-TBL-05 | Occupied-table choices retain Cancel / Sit together / Check Out & Continue when capacity allows |
+| RBOP-FR-TBL-06 | One active party/guest identity cannot be checked into two tables simultaneously |
+| RBOP-FR-TBL-07 | Free-text unconfigured table numbers are not allowed in TARGET; tables must exist as entities |
+
+## C.7 Retained Breakfast module inside RBOP
+
+These AS-IS capabilities remain **required** for Breakfast (and adaptable to Lunch/Dinner where relevant):
+
+| Domain | Retained behavior |
+| --- | --- |
+| PMS ingestion | Meal Plan + Package Forecast XML as interim import |
+| Entitlement | Package codes, RO precedence, BF qty, extras, FO Correct Status |
+| Guest ops | Hotel, Walk-In, Apartment, Manual Guest |
+| Seating | Late Arrivals, shared seating, table change, checkout history |
+| UX | Fast search, Guest Information, Today’s list filters/cards |
+| Payments | Payment Queue, paid timestamps, AED defaults 150/120 (tenant-configurable) |
+| Exports | Breakfast Report + Accounting Report column contracts retained |
+| Unknown packages | **Corrected:** require FO review and appear in exception/payment workflow |
+
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-BF-01 | Breakfast module shall preserve AS-IS entitlement and pricing semantics |
+| RBOP-FR-BF-02 | XML import remains available until direct PMS integration ships |
+| RBOP-FR-BF-03 | Unknown status requires FO review and is included in exception/payment handling |
+| RBOP-FR-BF-04 | Late Arrivals remain the duplicate active-room workflow |
+| RBOP-FR-BF-05 | Payment Queue remains operational even though POS/payment gateway are excluded |
+| RBOP-FR-BF-06 | Accounting Summary report includes Payment Queue data |
+
+## C.8 Target check-in workflow
+
+```mermaid
+flowchart TD
+  selectMeal[Select open meal session]
+  searchGuest[Search hotel walk-in or apartment guest]
+  validateGuest[Validate guest and entitlement]
+  selectTable[Select available table]
+  capacityCheck{Table and meal capacity OK?}
+  occupiedPrompt{Table has other parties?}
+  share[Sit together if capacity allows]
+  checkoutContinue[Check Out and Continue]
+  confirm[Confirm check-in]
+  persist[Persist centrally]
+  dashboard[Update dashboard]
+  broadcast[Broadcast real-time update]
+
+  selectMeal --> searchGuest --> validateGuest --> selectTable --> capacityCheck
+  capacityCheck -->|No| selectTable
+  capacityCheck -->|Yes| occupiedPrompt
+  occupiedPrompt -->|No| confirm
+  occupiedPrompt -->|Share| share --> confirm
+  occupiedPrompt -->|Checkout| checkoutContinue --> confirm
+  confirm --> persist --> dashboard --> broadcast
+```
+
+## C.9 Dashboard (TARGET)
+
+| Metric | Formula / definition |
+| --- | --- |
+| Total Guests | Sum of `actualGuests` for active check-ins in current meal session |
+| Walk-in Guests | Active walk-in actual guests |
+| Hotel Guests | Active hotel actual guests |
+| Apartment Guests | Active apartment actual guests |
+| Available Tables | Tables in Available status and not occupied |
+| Occupied Tables | Tables with >= 1 active party or Occupied status |
+| Capacity % | `sessionActiveGuests / sessionCapacity * 100` |
+| Average Guests per Table | `sessionActiveGuests / occupiedTables` (0 if none) |
+| Current Meal | Selected open meal session |
+| Live Floor Status | Floor/dining-area grid of table statuses |
+
+Dashboard must reconcile with persisted check-ins within the tenant/restaurant/session scope.
+
+## C.10 Reports (TARGET)
+
+| Report | Scope |
+| --- | --- |
+| Daily Summary | Business date across meals |
+| Meal Summary | One meal session |
+| Guest Statistics | Hotel / Walk-in / Apartment / included / payment / unknown |
+| Table Utilization | Occupancy duration, turns, capacity use |
+| Accounting Summary | Chargeable covers, amounts, paid/unpaid |
+| Breakfast Report (retained) | Existing column contract |
+| Accounting Excel (retained) | Existing column contract |
+
+Exports never delete history. Closing a meal session or business day is non-destructive.
+
+## C.11 Replaced operating assumptions
+
+| AS-IS | TARGET |
+| --- | --- |
+| `localStorage` day snapshot | PostgreSQL tenant DB |
+| Hard-coded credentials | Secure Laravel auth + RBAC |
+| Destructive New Day | Durable business date + meal open/close |
+| Free-text/config tables | Managed table entities |
+| Static GitHub Pages runtime | Vue 3 + Laravel API + Postgres + Redis + Reverb |
+| Offline/`file://` product mode | Excluded from TARGET; legacy note only |
 
 ---
 
-## 15. Appendix — Current repository map
+# Part D — Target data model and architecture
 
+## D.1 Core entities
+
+| Entity | Key fields / notes |
+| --- | --- |
+| Tenant | id, name, status, settings |
+| Restaurant | tenant_id, code (KCA/KTB…), name, branding, pricing defaults |
+| Floor | restaurant_id, name, sort_order |
+| DiningArea | floor_id, name, sort_order |
+| Table | dining_area_id, number, capacity, status, active |
+| MealSession | restaurant_id, business_date, meal_type, open_at, close_at, capacity, menu, status |
+| User | tenant_id, name, email/username, password hash, status |
+| Role / Permission | Spatie models; restaurant-scoped abilities as needed |
+| GuestProfile | hotel room, confirmation, names, stay, PMS fields |
+| Party / CheckIn | meal_session_id, table_id, guest refs, guest_type, actual_guests, entitlement fields, status, paid fields, checked_out_at |
+| AccountingEntry | derived/persisted payment row linked to check-in |
+| PMSImport | file metadata, type, checksum, imported_by, result |
+| OperationalEvent | audit/real-time outbox for check-in/out/table/status changes |
+
+Ownership: every operational row carries `tenant_id` (and restaurant where applicable). Soft-delete/audit timestamps required on mutating entities.
+
+## D.2 Mandated stack (TARGET)
+
+### Frontend
+- Vue 3
+- TypeScript
+- Pinia
+- Vue Router
+- Tailwind CSS v4
+- shadcn-vue
+
+### Backend
+- Laravel
+- PostgreSQL (database per tenant)
+- Spatie Multitenancy
+- Spatie Permission
+- Laravel Reverb
+- Redis
+
+## D.3 Target architecture
+
+```mermaid
+flowchart LR
+  clients[iPad and desktop browsers]
+  vueApp[Vue 3 SPA]
+  api[Laravel API]
+  auth[Auth and RBAC]
+  tenantDb[Tenant PostgreSQL]
+  redis[Redis]
+  reverb[Laravel Reverb]
+  imports[PMS XML import jobs]
+
+  clients --> vueApp --> api
+  api --> auth
+  api --> tenantDb
+  api --> redis
+  api --> reverb
+  reverb --> clients
+  api --> imports --> tenantDb
+```
+
+## D.4 Real-time requirements
+| ID | Requirement |
+| --- | --- |
+| RBOP-FR-RT-01 | Check-in/out, table status, and payment changes broadcast to connected clients in the same restaurant |
+| RBOP-FR-RT-02 | Target propagation latency under 2 seconds on healthy network |
+| RBOP-FR-RT-03 | Committed DB writes must succeed even if Redis/Reverb is temporarily unavailable |
+| RBOP-FR-RT-04 | Clients reconnect and resynchronize missed state |
+
+## D.5 Non-functional requirements (TARGET)
+
+| ID | Category | Requirement |
+| --- | --- | --- |
+| RBOP-NFR-01 | UX | Responsive iPad-optimized UI with large touch targets |
+| RBOP-NFR-02 | Security | Secure authentication, hashed passwords, session expiry, server-side authorization |
+| RBOP-NFR-03 | Isolation | Strict tenant data isolation |
+| RBOP-NFR-04 | Availability | High availability design; documented RTO/RPO |
+| RBOP-NFR-05 | Performance | Search and table board remain interactive under normal concurrent hostess load |
+| RBOP-NFR-06 | Audit | Mutating actions produce audit/operational events |
+| RBOP-NFR-07 | Privacy | PII protected; XML imports not publicly exposed |
+| RBOP-NFR-08 | Reliability | No data loss on client refresh; durable server persistence |
+| RBOP-NFR-09 | Maintainability | Automated tests for entitlement, capacity, permissions, imports, reports |
+| RBOP-NFR-10 | Backup | Automated tenant DB backups and restore drills |
+
+---
+
+# Part E — Transition specification
+
+## E.1 Disposition principles
+1. Preserve Breakfast operational parity before expanding to Lunch/Dinner.
+2. Do not drop AS-IS features omitted by the short RBOP v2 draft.
+3. Replace only incompatible assumptions (storage, auth, offline, destructive New Day).
+4. Treat `RBOP_BRD_v2.md` as the source proposal; this master BRD is the controlled contract.
+
+## E.2 Requirement disposition matrix (selected)
+
+| AS-IS ID | Disposition | TARGET / TRANS ID | Notes |
+| --- | --- | --- | --- |
+| ASIS-AUTH-* | Replace | RBOP-FR-TEN / RBAC | Secure users/roles |
+| ASIS-XML-* | Retain | RBOP-FR-BF-02 | Interim PMS ingestion |
+| ASIS-SEARCH-* | Retain | Hostess UX | Keep keyboard/fast search |
+| ASIS-CI-* | Retain/Adapt | Meal session + table entities | Add session/capacity checks |
+| ASIS-PAY-* | Retain | Accounting + Payment Queue | No POS yet |
+| ASIS-LATE-* | Retain | Hostess workflow | Same semantics |
+| ASIS-TBL-02/03/04 | Retain/Adapt | RBOP-FR-TBL-03/05 | Capacity gate added |
+| ASIS-DAY-* | Replace | Meal close + durable history | No wipe |
+| ASIS-EXP-* | Retain | Reports | Keep Excel contracts |
+| GAP-01 unknown | Change | RBOP-FR-BF-03 | Must enter exception/payment flow |
+| Offline/file mode | Retire as product | TRANS-LEGACY-01 | Documented legacy only |
+
+## E.3 Phased delivery
+
+| Phase | Deliverable |
+| --- | --- |
+| 1 | SaaS tenancy, auth, RBAC foundation |
+| 2 | Restaurant hierarchy + migrate KCA/KTB tables/branding |
+| 3 | Server-backed Breakfast parity (XML, entitlement, payments, late arrivals, shared seating, exports) |
+| 4 | Meal sessions, capacities, explicit table statuses, real-time sync |
+| 5 | Lunch/Dinner, dashboards, target summary reports |
+| 6 | Deferred: direct PMS, POS, reservations, mobile, loyalty |
+
+## E.4 Transition requirements
+
+| ID | Requirement |
+| --- | --- |
+| TRANS-01 | Provide migration scripts/import for KCA/KTB restaurants, logos, and table lists |
+| TRANS-02 | Map legacy check-in/payment field semantics into target entities |
+| TRANS-03 | Preserve Excel column contracts during and after migration |
+| TRANS-04 | Until Phase 3 complete, do not remove any AS-IS Breakfast capability relied on by hosts |
+| TRANS-05 | Document cutover plan: pilot one restaurant, then second |
+| TRANS-LEGACY-01 | Legacy static app remains reference implementation until RBOP Breakfast parity is accepted |
+
+## E.5 Acceptance criteria (TARGET + parity)
+
+### Platform
+- Tenant A cannot read Tenant B data through any interface.
+- Supervisor/Hostess/Waiter permissions enforced server-side.
+- Password credentials are not hard-coded in frontend.
+
+### Operations
+- Closed meal session rejects check-in.
+- Every check-in stores tenant, restaurant, meal session, table.
+- Aggregate table guests cannot exceed capacity.
+- Cleaning/Out of Service tables reject check-in.
+- Concurrent clients cannot overbook beyond capacity.
+- Real-time update appears on second client within 2 seconds when infrastructure healthy.
+- Redis/Reverb outage does not lose committed check-ins.
+
+### Breakfast parity
+- XML import/merge/entitlement codes behave as AS-IS.
+- Late Arrivals, shared seating, Apartment pricing, Payment Queue, and Excel columns remain available.
+- Unknown packages require FO review and appear in exception/payment handling.
+- Checkout retains history; no destructive New Day wipe in TARGET.
+
+### Analytics
+- Dashboard metrics reconcile with session check-ins.
+- Daily/Meal/Accounting reports reconcile with source rows and tenant scope.
+
+---
+
+# Part F — AI agent rebuild guidance
+
+Any AI agent working from this BRD SHALL:
+
+1. Treat this file as the master contract; use `RBOP_BRD_v2.md` only as the original proposal.
+2. Preserve all AS-IS Breakfast business rules unless a TARGET/TRANSITION item explicitly changes them.
+3. Build TARGET on Vue 3 + Laravel + PostgreSQL tenant DBs + Redis + Reverb.
+4. Keep UI optimized for iPad hostess workflows.
+5. Maintain tenant isolation and server-side role permissions.
+6. Preserve meal-session workflow and real-time synchronization.
+7. Retain XML interim import, entitlement, payments, late arrivals, shared seating, Apartment guests, and Excel exports.
+8. Not invent POS, payment gateway, offline mode, or mobile apps in the first release.
+9. Prefer durable history over destructive New Day clearing.
+10. Implement tests for entitlement, capacity, permissions, imports, and reports before calling parity complete.
+
+---
+
+# Part G — Appendix
+
+## G.1 Current repository map (AS-IS)
 ```text
-index.html                 UI shell
-style.css                  App-specific styles / responsive rules
-manifest.webmanifest       PWA manifest
-service-worker.js          Cache/network strategy
-tables-kca.txt             KCA table list
-tables-ktb.txt             KTB table list
-js/app.js                  Orchestration
-js/app.bundle.js           Runtime bundle (committed)
-js/auth.js
-js/xmlParser.js
-js/mergeData.js
-js/search.js
-js/checkin.js
-js/payment.js
-js/export.js
-js/ui.js
-js/tables.js
-js/utils.js
-vendor/xlsx.full.min.js
-vendor/fontawesome/
-assets/logos/
-assets/favicon.svg
+index.html
+style.css
+manifest.webmanifest
+service-worker.js
+tables-kca.txt
+tables-ktb.txt
+js/app.js / app.bundle.js / auth.js / xmlParser.js / mergeData.js
+js/search.js / checkin.js / payment.js / export.js / ui.js / tables.js / utils.js
+vendor/
+assets/
 .github/workflows/pages.yml
 README.md
-BRD.md                     This document
+BRD.md                 This master document
+RBOP_BRD_v2.md         Source expansion proposal (unchanged)
 ```
+
+## G.2 Decision log
+
+| Decision | Choice | Rationale |
+| --- | --- | --- |
+| Migration scope | Retain and expand current Breakfast features | Operations already depend on XML, entitlement, payments, late arrivals, Apartment |
+| Dining zone naming | Dining Area | Avoid confusion with hotel room numbers |
+| Shared seating | Allowed within table capacity | Matches current Sit together need |
+| Unknown packages | FO review + exception/payment | Corrects GAP-01 |
+| Offline mode | Excluded from TARGET | SaaS real-time platform |
+| New Day wipe | Retired | Durable reporting history |
+| PMS | XML interim; API deferred | Continuity without waiting for PMS project |
 
 ---
 
-*End of BRD*
-```
+*End of master BRD v3.0*
