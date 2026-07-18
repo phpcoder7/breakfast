@@ -353,6 +353,19 @@
           </div>
 
           <div data-tab-panel="checkins" class="min-h-0 flex-1 overflow-y-auto" hidden>
+            <div class="mb-3 shrink-0">
+              <label class="relative block">
+                <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input
+                  id="checkinSearchInput"
+                  class="h-12 w-full rounded-2xl border-0 bg-slate-100 py-2 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-primary/25"
+                  type="search"
+                  inputmode="search"
+                  placeholder="Search table, room, or guest name"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
             <div id="checkinTableBody" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
           </div>
 

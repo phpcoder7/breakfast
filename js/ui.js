@@ -3,11 +3,33 @@ import {
   formatDate,
   formatTime,
   listToText,
+  normalizeSearchText,
+  parseInteger,
   statusMeta
 } from "./utils.js";
 import { renderSearchResults } from "./search.js";
 
 const RECENT_LIMIT = 6;
+
+function guestCountForRecord(record) {
+  const actual = parseInteger(record.actualGuests, NaN);
+  if (Number.isFinite(actual) && actual >= 0) {
+    return actual;
+  }
+  return parseInteger(record.adults, 0) + parseInteger(record.children, 0);
+}
+
+function matchesCheckInFilter(record, query) {
+  const needle = normalizeSearchText(query);
+  if (!needle) {
+    return true;
+  }
+
+  const haystack = normalizeSearchText(
+    [record.tableNumber, record.roomNumber, record.guestName].filter(Boolean).join(" ")
+  );
+  return haystack.includes(needle);
+}
 
 function statusBadgeClass(status, guestType = "") {
   if (guestType === "Apartment") {
@@ -122,6 +144,24 @@ function checkInCardMarkup(record) {
   const timeLine = record.checkedOut
     ? `${escapeHtml(record.timeLabel || "")}${checkOutTime ? ` · Out ${escapeHtml(checkOutTime)}` : ""}`
     : escapeHtml(record.timeLabel || "");
+  const guestCount = guestCountForRecord(record);
+  const guestCountMarkup = record.checkedOut
+    ? `
+        <span class="inline-flex items-center gap-1.5 rounded-xl bg-white/70 px-2.5 py-1.5 text-slate-500">
+          <i class="fa-solid fa-user-group text-slate-400"></i>
+          <span>Guests ${guestCount}</span>
+        </span>`
+    : `
+        <button
+          class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50"
+          type="button"
+          data-add-guests-id="${escapeHtml(record.id)}"
+          title="Add late arrivals"
+        >
+          <i class="fa-solid fa-user-group text-primary"></i>
+          <span>Guests ${guestCount}</span>
+          <i class="fa-solid fa-plus text-[10px] text-slate-400"></i>
+        </button>`;
 
   return `
     <article class="card-enter cursor-pointer rounded-2xl p-3 transition ${cardClass}" data-checkin-id="${escapeHtml(record.id)}">
@@ -131,7 +171,7 @@ function checkInCardMarkup(record) {
       </div>
       <div class="text-2xl font-black tracking-tight text-slate-900">${escapeHtml(record.roomNumber || "")}</div>
       <div class="mt-1 truncate text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "")}</div>
-      <div class="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500">
         <button
           class="inline-flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-slate-700 transition active:scale-[0.97] hover:bg-blue-50 ${record.checkedOut ? "pointer-events-none opacity-60" : ""}"
           type="button"
@@ -143,8 +183,9 @@ function checkInCardMarkup(record) {
           <span>Table ${escapeHtml(String(record.tableNumber || "-"))}</span>
           ${record.checkedOut ? "" : '<i class="fa-solid fa-pen text-[10px] text-slate-400"></i>'}
         </button>
-        <span>${escapeHtml(record.guestType || "")}</span>
+        ${guestCountMarkup}
       </div>
+      <div class="mt-2 text-xs font-bold text-slate-500">${escapeHtml(record.guestType || "")}</div>
       ${
         record.checkedOut
           ? ""
@@ -252,6 +293,8 @@ function emptyCardsMarkup(message) {
 export class BreakfastUI {
   constructor() {
     this.recentRooms = [];
+    this._lastCheckIns = [];
+    this._lastPayments = [];
     this.elements = {
       mealPlanFile: document.querySelector("#mealPlanFile"),
       packageForecastFile: document.querySelector("#packageForecastFile"),
@@ -270,6 +313,7 @@ export class BreakfastUI {
       newDayButton: document.querySelector("#newDayButton"),
       exportTodayButton: document.querySelector("#exportTodayButton"),
       exportAccountingButton: document.querySelector("#exportAccountingButton"),
+      checkinSearchInput: document.querySelector("#checkinSearchInput"),
       checkinTableBody: document.querySelector("#checkinTableBody"),
       paymentTableBody: document.querySelector("#paymentTableBody"),
       tabButtons: Array.from(document.querySelectorAll("[data-tab-target]")),
@@ -287,7 +331,14 @@ export class BreakfastUI {
     };
 
     this.bindRecentSearchClicks();
+    this.bindCheckInSearch();
     this.renderRecentSearches();
+  }
+
+  bindCheckInSearch() {
+    this.elements.checkinSearchInput?.addEventListener("input", (event) => {
+      this.filterCheckIns(event.target.value);
+    });
   }
 
   bindRecentSearchClicks() {
@@ -437,10 +488,28 @@ export class BreakfastUI {
 
   renderCheckIns(records) {
     this._lastCheckIns = records;
-    this.elements.checkinTableBody.innerHTML = records.length
-      ? records.map((record) => checkInCardMarkup(record)).join("")
-      : emptyCardsMarkup("No check-ins recorded yet.");
+    if (!records.length && this.elements.checkinSearchInput) {
+      this.elements.checkinSearchInput.value = "";
+    }
+    this.filterCheckIns(this.elements.checkinSearchInput?.value || "");
     this.updateStatistics(records, this._lastPayments || []);
+  }
+
+  filterCheckIns(query = "") {
+    const records = this._lastCheckIns || [];
+    if (!this.elements.checkinTableBody) {
+      return;
+    }
+
+    if (!records.length) {
+      this.elements.checkinTableBody.innerHTML = emptyCardsMarkup("No check-ins recorded yet.");
+      return;
+    }
+
+    const filtered = records.filter((record) => matchesCheckInFilter(record, query));
+    this.elements.checkinTableBody.innerHTML = filtered.length
+      ? filtered.map((record) => checkInCardMarkup(record)).join("")
+      : emptyCardsMarkup("No matching check-ins.");
   }
 
   renderPayments(records) {

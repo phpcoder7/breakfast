@@ -155,6 +155,12 @@ class BreakfastApp {
         return;
       }
 
+      const addGuestsButton = event.target.closest("[data-add-guests-id]");
+      if (addGuestsButton) {
+        this.handleAddGuestsFromCard(addGuestsButton.dataset.addGuestsId);
+        return;
+      }
+
       const checkoutButton = event.target.closest("[data-checkout-id]");
       if (checkoutButton) {
         this.handleCheckOut(checkoutButton.dataset.checkoutId);
@@ -466,11 +472,32 @@ class BreakfastApp {
     return true;
   }
 
-  async handleLateArrivals(existingCheckIn, tableNumber) {
+  async handleAddGuestsFromCard(checkInId) {
+    if (!checkInId) {
+      return;
+    }
+
+    const existingCheckIn = this.state.checkIns.find((record) => record.id === checkInId);
+    if (!existingCheckIn || existingCheckIn.checkedOut) {
+      return;
+    }
+
+    await this.handleLateArrivals(existingCheckIn, existingCheckIn.tableNumber, {
+      clearForm: false
+    });
+  }
+
+  async handleLateArrivals(existingCheckIn, tableNumber, options = {}) {
+    const clearForm = options.clearForm !== false;
     const currentTable = existingCheckIn.tableNumber || "-";
+    const currentGuests =
+      parseInteger(existingCheckIn.actualGuests, NaN) >= 0
+        ? parseInteger(existingCheckIn.actualGuests, 0)
+        : parseInteger(existingCheckIn.adults, 0) + parseInteger(existingCheckIn.children, 0);
+
     const formValues = await this.ui.promptForm({
       title: `Late Arrivals — Room ${existingCheckIn.roomNumber}`,
-      message: `Current table for earlier guests: ${currentTable}`,
+      message: `Current guests: ${currentGuests}. Current table: ${currentTable}`,
       submitLabel: "Add Arrivals",
       fields: [
         {
@@ -485,7 +512,9 @@ class BreakfastApp {
     });
 
     if (!formValues) {
-      this.focusSearch();
+      if (clearForm) {
+        this.focusSearch();
+      }
       return;
     }
 
@@ -516,21 +545,27 @@ class BreakfastApp {
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
 
-    this.ui.elements.tableNumberInput.value = "";
-    this.ui.elements.actualGuestsInput.value = "";
-    this.ui.elements.searchInput.value = "";
-    this.selectedGuest = null;
-    this.searchState.results = [];
-    this.searchState.activeIndex = -1;
-    this.ui.clearSearchResults();
+    if (clearForm) {
+      this.ui.elements.tableNumberInput.value = "";
+      this.ui.elements.actualGuestsInput.value = "";
+      this.ui.elements.searchInput.value = "";
+      this.selectedGuest = null;
+      this.searchState.results = [];
+      this.searchState.activeIndex = -1;
+      this.ui.clearSearchResults();
+    }
+
     this.refreshUi();
-    this.focusSearch();
+
+    if (clearForm) {
+      this.focusSearch();
+    }
 
     const extrasNote = updated.entitlementExceeded
       ? ` Payment list updated (${updated.extraGuests} extra guest(s)).`
       : "";
     this.ui.renderMessage(
-      `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s). Current table ${updated.tableNumber}.${extrasNote}`,
+      `Room ${updated.roomNumber} updated: +${updated.lateArrivalAdded} late arrival(s). Total guests ${updated.actualGuests}. Table ${updated.tableNumber}.${extrasNote}`,
       "success"
     );
   }
