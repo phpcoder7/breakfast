@@ -307,8 +307,9 @@ class BreakfastApp {
         : ""
     }));
 
-    this.ui.renderCheckIns(checkInsForTable);
-    this.ui.renderPayments(paymentForTable);
+    this.ui.setRosterGuests(this.state.guests || []);
+    this.ui.renderCheckIns(checkInsForTable, this.state.guests || []);
+    this.ui.renderPayments(paymentForTable, this.state.guests || []);
     this.ui.renderTables(getTablesForUser(getActiveBrand()), this.state.checkIns);
     const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast || (this.state.guests && this.state.guests.length > 0);
     const manualReady = Boolean(this.selectedGuest?.statusOverride);

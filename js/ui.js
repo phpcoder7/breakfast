@@ -371,6 +371,16 @@ export class BreakfastUI {
       statPayments: document.querySelector("#statPayments"),
       statIncluded: document.querySelector("#statIncluded"),
       statPaymentRequired: document.querySelector("#statPaymentRequired"),
+      statActualGuests: document.querySelector("#statActualGuests"),
+      statForecastGuests: document.querySelector("#statForecastGuests"),
+      statAdults: document.querySelector("#statAdults"),
+      statChildren: document.querySelector("#statChildren"),
+      statForecastRooms: document.querySelector("#statForecastRooms"),
+      statActiveRooms: document.querySelector("#statActiveRooms"),
+      statCheckedOutRooms: document.querySelector("#statCheckedOutRooms"),
+      statForecastIncluded: document.querySelector("#statForecastIncluded"),
+      statIncludedGuests: document.querySelector("#statIncludedGuests"),
+      statPayGuests: document.querySelector("#statPayGuests"),
       reportsDashboardButton: document.querySelector("#reportsDashboardButton"),
       mobileReportsDashboardButton: document.querySelector("#mobileReportsDashboardButton"),
       reportsDashboardModal: document.querySelector("#reportsDashboardModal"),
@@ -608,30 +618,114 @@ export class BreakfastUI {
     this.elements.searchResults.innerHTML = "";
   }
 
-  updateStatistics(checkIns = [], payments = []) {
-    const unpaid = payments.filter((record) => !record.paid);
+  setRosterGuests(guests = []) {
+    this._lastGuests = Array.isArray(guests) ? guests : [];
+    this.updateStatistics(this._lastCheckIns || [], this._lastPayments || [], this._lastGuests);
+  }
 
+  updateStatistics(checkIns = [], payments = [], guests = this._lastGuests || []) {
+    const safeCheckIns = Array.isArray(checkIns) ? checkIns : [];
+    const safePayments = Array.isArray(payments) ? payments : [];
+    const safeGuests = Array.isArray(guests) ? guests : [];
+
+    // Actual check-in statistics
+    const totalCheckIns = safeCheckIns.length;
+    const activeRooms = safeCheckIns.filter((r) => !r.checkedOut).length;
+    const checkedOutRooms = safeCheckIns.filter((r) => Boolean(r.checkedOut)).length;
+
+    const actualAdults = safeCheckIns.reduce((sum, r) => sum + (Number(r.adults) || 0), 0);
+    const actualChildren = safeCheckIns.reduce((sum, r) => sum + (Number(r.children) || 0), 0);
+    const actualGuests = safeCheckIns.reduce(
+      (sum, r) => sum + (Number(r.actualGuests) || (Number(r.adults) || 0) + (Number(r.children) || 0) || 1),
+      0
+    );
+
+    const includedCheckIns = safeCheckIns.filter((r) => r.breakfastStatus === "included");
+    const includedCount = includedCheckIns.length;
+    const includedGuests = includedCheckIns.reduce(
+      (sum, r) => sum + (Number(r.actualGuests) || (Number(r.adults) || 0) + (Number(r.children) || 0) || 1),
+      0
+    );
+
+    const payCheckIns = safeCheckIns.filter(
+      (r) =>
+        r.breakfastStatus === "payment" ||
+        r.guestType === "Apartment" ||
+        r.guestType === "Walk-In" ||
+        Number(r.extraGuests) > 0
+    );
+    const payEntries = payCheckIns.length;
+    const payGuests =
+      safeCheckIns
+        .filter((r) => r.breakfastStatus === "payment" || r.guestType === "Apartment" || r.guestType === "Walk-In")
+        .reduce((sum, r) => sum + (Number(r.actualGuests) || (Number(r.adults) || 0) + (Number(r.children) || 0) || 1), 0) +
+      safeCheckIns.reduce((sum, r) => sum + (Number(r.extraGuests) || 0), 0);
+
+    const unpaid = safePayments.filter((record) => !record.paid).length;
+
+    // Forecast / Roster statistics (from Meal Plan & Package Forecast)
+    const forecastRooms = safeGuests.length;
+    const forecastAdults = safeGuests.reduce((sum, g) => sum + (Number(g.adults) || 0), 0);
+    const forecastChildren = safeGuests.reduce((sum, g) => sum + (Number(g.children) || 0), 0);
+    const forecastGuests = forecastAdults + forecastChildren;
+    const forecastIncluded = safeGuests.filter((g) => g.breakfastStatus === "included").length;
+
+    // Update Card 1: Total Guests & Breakdown
+    if (this.elements.statActualGuests) {
+      this.elements.statActualGuests.textContent = String(actualGuests);
+    }
+    if (this.elements.statForecastGuests) {
+      this.elements.statForecastGuests.textContent = String(forecastGuests);
+    }
+    if (this.elements.statAdults) {
+      this.elements.statAdults.textContent = `${actualAdults}/${forecastAdults}`;
+    }
+    if (this.elements.statChildren) {
+      this.elements.statChildren.textContent = `${actualChildren}/${forecastChildren}`;
+    }
+
+    // Update Card 2: Check-ins / Rooms
     if (this.elements.statCheckIns) {
-      this.elements.statCheckIns.textContent = String(checkIns.length);
+      this.elements.statCheckIns.textContent = String(totalCheckIns);
+    }
+    if (this.elements.statForecastRooms) {
+      this.elements.statForecastRooms.textContent = String(forecastRooms);
+    }
+    if (this.elements.statActiveRooms) {
+      this.elements.statActiveRooms.textContent = String(activeRooms);
+    }
+    if (this.elements.statCheckedOutRooms) {
+      this.elements.statCheckedOutRooms.textContent = String(checkedOutRooms);
+    }
+
+    // Update Card 3: Included
+    if (this.elements.statIncluded) {
+      this.elements.statIncluded.textContent = String(includedCount);
+    }
+    if (this.elements.statForecastIncluded) {
+      this.elements.statForecastIncluded.textContent = String(forecastIncluded);
+    }
+    if (this.elements.statIncludedGuests) {
+      this.elements.statIncludedGuests.textContent = String(includedGuests);
+    }
+
+    // Update Card 4: Pay & Payments
+    if (this.elements.statPaymentRequired) {
+      this.elements.statPaymentRequired.textContent = String(payEntries);
+    }
+    if (this.elements.statPayGuests) {
+      this.elements.statPayGuests.textContent = String(payGuests);
     }
     if (this.elements.statPayments) {
-      this.elements.statPayments.textContent = String(unpaid.length);
-    }
-    if (this.elements.statIncluded) {
-      this.elements.statIncluded.textContent = String(
-        checkIns.filter((record) => record.breakfastStatus === "included").length
-      );
-    }
-    if (this.elements.statPaymentRequired) {
-      this.elements.statPaymentRequired.textContent = String(
-        checkIns.filter((record) => record.breakfastStatus === "payment" || record.guestType === "Apartment" || record.guestType === "Walk-In")
-          .length
-      );
+      this.elements.statPayments.textContent = String(unpaid);
     }
   }
 
-  renderCheckIns(records) {
+  renderCheckIns(records, guests = this._lastGuests || []) {
     this._lastCheckIns = records;
+    if (guests) {
+      this._lastGuests = guests;
+    }
     if (!records.length) {
       if (this.elements.checkinTableSearchInput) {
         this.elements.checkinTableSearchInput.value = "";
@@ -656,7 +750,7 @@ export class BreakfastUI {
     }
 
     this.filterCheckIns();
-    this.updateStatistics(records, this._lastPayments || []);
+    this.updateStatistics(records, this._lastPayments || [], this._lastGuests || []);
   }
 
   filterCheckIns() {
@@ -696,12 +790,15 @@ export class BreakfastUI {
       : emptyCardsMarkup("No matching check-ins.");
   }
 
-  renderPayments(records) {
+  renderPayments(records, guests = this._lastGuests || []) {
     this._lastPayments = records;
+    if (guests) {
+      this._lastGuests = guests;
+    }
     this.elements.paymentTableBody.innerHTML = records.length
       ? records.map((record) => paymentCardMarkup(record)).join("")
       : emptyCardsMarkup("No payment items queued.");
-    this.updateStatistics(this._lastCheckIns || [], records);
+    this.updateStatistics(this._lastCheckIns || [], records, this._lastGuests || []);
   }
 
   renderTables(tableNumbers, checkIns = []) {

@@ -362,21 +362,67 @@
                 </div>
 
                 <div class="grid flex-1 grid-cols-2 gap-2">
-                  <div class="rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-ins</p>
-                    <p id="statCheckIns" class="mt-0.5 text-2xl font-extrabold text-slate-900 sm:mt-1 sm:text-3xl">0</p>
+                  <!-- Card 1: Total Guests & Breakdown (Adults/Children vs Forecast) -->
+                  <div class="flex flex-col justify-between rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Guests</p>
+                      <i class="fa-solid fa-users text-xs text-slate-400"></i>
+                    </div>
+                    <div class="my-0.5 flex items-baseline gap-1.5">
+                      <p id="statActualGuests" class="text-2xl font-black text-slate-900 sm:text-3xl">0</p>
+                      <span class="text-xs font-bold text-slate-400">/ <span id="statForecastGuests">0</span> plan</span>
+                    </div>
+                    <div class="flex items-center gap-2 border-t border-slate-200/60 pt-1 text-[11px] font-bold text-slate-600">
+                      <span title="Adults checked in vs forecast"><i class="fa-solid fa-user mr-0.5 text-[10px] text-slate-400"></i><span id="statAdults">0/0</span> A</span>
+                      <span title="Children checked in vs forecast"><i class="fa-solid fa-child mr-0.5 text-[10px] text-slate-400"></i><span id="statChildren">0/0</span> C</span>
+                    </div>
                   </div>
-                  <div class="rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Payments</p>
-                    <p id="statPayments" class="mt-0.5 text-2xl font-extrabold text-danger sm:mt-1 sm:text-3xl">0</p>
+
+                  <!-- Card 2: Check-ins / Rooms vs Forecast -->
+                  <div class="flex flex-col justify-between rounded-2xl bg-slate-50 p-2.5 sm:rounded-3xl sm:p-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-ins</p>
+                      <i class="fa-solid fa-door-open text-xs text-slate-400"></i>
+                    </div>
+                    <div class="my-0.5 flex items-baseline gap-1.5">
+                      <p id="statCheckIns" class="text-2xl font-black text-slate-900 sm:text-3xl">0</p>
+                      <span class="text-xs font-bold text-slate-400">/ <span id="statForecastRooms">0</span> rooms</span>
+                    </div>
+                    <div class="flex items-center gap-2 border-t border-slate-200/60 pt-1 text-[11px] font-bold text-slate-600">
+                      <span class="text-emerald-700" title="Active inside restaurant"><span class="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span><span id="statActiveRooms">0</span> In</span>
+                      <span class="text-slate-500" title="Checked out"><i class="fa-solid fa-arrow-right-from-bracket mr-0.5 text-[10px] text-slate-400"></i><span id="statCheckedOutRooms">0</span> Out</span>
+                    </div>
                   </div>
-                  <div class="rounded-2xl bg-green-50 p-2.5 sm:rounded-3xl sm:p-3">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-success">Included</p>
-                    <p id="statIncluded" class="mt-0.5 text-xl font-extrabold text-success sm:mt-1 sm:text-2xl">0</p>
+
+                  <!-- Card 3: Included Breakfast -->
+                  <div class="flex flex-col justify-between rounded-2xl border border-green-100 bg-green-50/80 p-2.5 sm:rounded-3xl sm:p-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] font-bold uppercase tracking-wider text-success">Included</p>
+                      <i class="fa-solid fa-circle-check text-xs text-success"></i>
+                    </div>
+                    <div class="my-0.5 flex items-baseline gap-1.5">
+                      <p id="statIncluded" class="text-2xl font-black text-success sm:text-3xl">0</p>
+                      <span class="text-xs font-bold text-green-700/70">/ <span id="statForecastIncluded">0</span> plan</span>
+                    </div>
+                    <div class="border-t border-green-200/60 pt-1 text-[11px] font-bold text-green-800">
+                      <span id="statIncludedGuests">0</span> guests served
+                    </div>
                   </div>
-                  <div class="rounded-2xl bg-red-50 p-2.5 sm:rounded-3xl sm:p-3">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-danger">Pay</p>
-                    <p id="statPaymentRequired" class="mt-0.5 text-xl font-extrabold text-danger sm:mt-1 sm:text-2xl">0</p>
+
+                  <!-- Card 4: Pay / Extra & Payments -->
+                  <div class="flex flex-col justify-between rounded-2xl border border-red-100 bg-red-50/80 p-2.5 sm:rounded-3xl sm:p-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] font-bold uppercase tracking-wider text-danger">Pay / Extra</p>
+                      <i class="fa-solid fa-cash-register text-xs text-danger"></i>
+                    </div>
+                    <div class="my-0.5 flex items-baseline gap-1.5">
+                      <p id="statPaymentRequired" class="text-2xl font-black text-danger sm:text-3xl">0</p>
+                      <span class="text-xs font-bold text-red-700/70">entries</span>
+                    </div>
+                    <div class="flex items-center justify-between border-t border-red-200/60 pt-1 text-[11px] font-bold text-red-800">
+                      <span><span id="statPayGuests">0</span> guests</span>
+                      <span class="rounded bg-red-200/80 px-1 text-[10px] font-extrabold text-red-900" title="Unpaid bills"><span id="statPayments">0</span> unpaid</span>
+                    </div>
                   </div>
                 </div>
               </div>
