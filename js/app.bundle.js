@@ -111,6 +111,9 @@
   function writeStoredState(state) {
     localStorage.setItem(STORAGE_KEYS.SNAPSHOT, JSON.stringify(state));
   }
+  function clearStoredState() {
+    localStorage.removeItem(STORAGE_KEYS.SNAPSHOT);
+  }
   function createId(prefix = "id") {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -2486,6 +2489,7 @@
         this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
         return;
       }
+      clearStoredState();
       this.state.checkIns = [];
       this.state.paymentList = [];
       this.state.guests = [];
@@ -2520,6 +2524,14 @@
       if (this.ui.elements.searchInput) {
         this.ui.elements.searchInput.value = "";
       }
+      const tableFilter = document.querySelector("#checkinTableSearchInput");
+      if (tableFilter) {
+        tableFilter.value = "";
+      }
+      const guestFilter = document.querySelector("#checkinGuestSearchInput");
+      if (guestFilter) {
+        guestFilter.value = "";
+      }
       this.ui.clearSearchResults();
       this.ui.renderGuest(null);
       if (this.ui.recentRooms) {
@@ -2528,6 +2540,7 @@
       }
       this.persistState();
       this.refreshUi();
+      this.focusSearch();
       this.ui.renderMessage("Reports downloaded. New day started. Please load XML reports (Meal Plan or Package Forecast).", "success");
     }
     handleExportToday() {

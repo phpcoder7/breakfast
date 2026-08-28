@@ -22,6 +22,7 @@ import { getBrandLogo, getCurrentUser, isLoggedIn, login, logout } from "./auth.
 import { getTablesForUser } from "./tables.js";
 import {
   BREAKFAST_STATUS,
+  clearStoredState,
   escapeHtml,
   normalizeRoom,
   parseInteger,
@@ -949,6 +950,8 @@ class BreakfastApp {
       return;
     }
 
+    clearStoredState();
+
     this.state.checkIns = [];
     this.state.paymentList = [];
     this.state.guests = [];
@@ -985,6 +988,14 @@ class BreakfastApp {
     if (this.ui.elements.searchInput) {
       this.ui.elements.searchInput.value = "";
     }
+    const tableFilter = document.querySelector("#checkinTableSearchInput");
+    if (tableFilter) {
+      tableFilter.value = "";
+    }
+    const guestFilter = document.querySelector("#checkinGuestSearchInput");
+    if (guestFilter) {
+      guestFilter.value = "";
+    }
 
     this.ui.clearSearchResults();
     this.ui.renderGuest(null);
@@ -995,6 +1006,7 @@ class BreakfastApp {
 
     this.persistState();
     this.refreshUi();
+    this.focusSearch();
     this.ui.renderMessage("Reports downloaded. New day started. Please load XML reports (Meal Plan or Package Forecast).", "success");
   }
 

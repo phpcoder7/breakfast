@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakfast-checkin-v14";
+const CACHE_NAME = "breakfast-checkin-v15";
 
 const APP_ASSETS = [
   "./",
@@ -33,6 +33,12 @@ self.addEventListener("activate", (event) => {
       )
   );
   self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
