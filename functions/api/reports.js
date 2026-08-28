@@ -49,7 +49,7 @@ export async function onRequestGet({ request, env }) {
     const brand = (url.searchParams.get("brand") || "").trim().toUpperCase();
     const date = (url.searchParams.get("date") || "").trim();
     const query = (url.searchParams.get("query") || "").trim().toLowerCase();
-    const full = url.searchParams.get("full") === "true" || Boolean(date);
+    const full = url.searchParams.get("full") === "true" || Boolean(date) || Boolean(query);
 
     let sql = "SELECT id, service_date, brand, total_checkins, total_guests, total_payments, total_amount_aed, created_at, updated_at";
     if (full || query) {
@@ -92,23 +92,36 @@ export async function onRequestGet({ request, env }) {
         totalAmountAed: row.total_amount_aed,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        reportData: full ? parsedData : undefined,
-        rawReportData: query ? parsedData : undefined
+        reportData: parsedData,
+        rawReportData: parsedData
       };
     });
 
     // If a search query is provided, filter records by room number or guest name inside the report payload
     if (query) {
+      const qClean = query.replace(/^0+/, "");
       formatted = formatted.filter((report) => {
         if (!report.rawReportData) return false;
         const checkIns = report.rawReportData.checkIns || [];
         const paymentList = report.rawReportData.paymentList || [];
 
         const hasCheckInMatch = checkIns.some((c) => {
-          const room = String(c.roomNumber || "").toLowerCase();
+          const roomRaw = String(c.roomNumber || c.displayLocation || "").toLowerCase();
+          const roomClean = roomRaw.replace(/^0+/, "");
           const name = String(c.guestName || "").toLowerCase();
           const table = String(c.tableNumber || "").toLowerCase();
-          return room.includes(query) || name.includes(query) || table.includes(query);
+          const mealPlan = String(c.mealPlan || "").toLowerCase();
+          const guestType = String(c.guestType || "").toLowerCase();
+          const status = String(c.breakfastStatus || "").toLowerCase();
+          return (
+            roomRaw.includes(query) ||
+            (qClean && roomClean.includes(qClean)) ||
+            name.includes(query) ||
+            table.includes(query) ||
+            mealPlan.includes(query) ||
+            guestType.includes(query) ||
+            status.includes(query)
+          );
         });
 
         const hasPaymentMatch = paymentList.some((p) => {
@@ -119,13 +132,6 @@ export async function onRequestGet({ request, env }) {
 
         return hasCheckInMatch || hasPaymentMatch;
       });
-
-      // Strip rawReportData unless full was requested
-      if (!full) {
-        formatted.forEach((item) => {
-          delete item.rawReportData;
-        });
-      }
     }
 
     return jsonResponse({

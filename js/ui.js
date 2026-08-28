@@ -1133,7 +1133,7 @@ export class BreakfastUI {
     if (this.elements.kpiPaymentsCount) this.elements.kpiPaymentsCount.textContent = String(totalPayments);
   }
 
-  renderReportsList(reports = [], { onExportReport, onInspectReport }) {
+  renderReportsList(reports = [], { query = "", onExportReport, onInspectReport }) {
     if (!this.elements.reportsListContainer) return;
 
     this.updateReportsKpi(reports);
@@ -1143,15 +1143,18 @@ export class BreakfastUI {
         <div class="flex h-48 flex-col items-center justify-center text-center p-4 text-slate-400">
           <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
           <span class="text-sm font-bold text-slate-600">No reports found</span>
-          <span class="text-xs text-slate-400 mt-0.5">Try adjusting your date or search filters.</span>
+          <span class="text-xs text-slate-400 mt-0.5">${query ? `No records matched "${escapeHtml(query)}"` : "Try adjusting your date or search filters."}</span>
         </div>
       `;
       return;
     }
 
+    const hasQuery = Boolean(query && query.trim());
+
     const cardsHtml = reports
       .map((report) => {
         const brandBadgeClass = report.brand === "KCA" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        const isAutoExpanded = hasQuery;
         return `
           <div class="report-card rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3.5 transition hover:bg-white hover:shadow-sm sm:p-4" data-report-id="${escapeHtml(report.id)}">
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1162,6 +1165,7 @@ export class BreakfastUI {
                 <span class="text-sm font-black text-slate-900 sm:text-base">
                   ${escapeHtml(report.serviceDate)}
                 </span>
+                ${hasQuery ? `<span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black text-primary"><i class="fa-solid fa-magnifying-glass text-[9px]"></i> Matching "${escapeHtml(query)}"</span>` : ""}
               </div>
 
               <!-- Action Buttons -->
@@ -1183,7 +1187,7 @@ export class BreakfastUI {
                   data-brand="${escapeHtml(report.brand)}"
                   title="Inspect Check-ins"
                 >
-                  <i class="fa-solid fa-chevron-down text-xs"></i>
+                  <i class="fa-solid ${isAutoExpanded ? "fa-chevron-up" : "fa-chevron-down"} text-xs"></i>
                 </button>
               </div>
             </div>
@@ -1205,7 +1209,7 @@ export class BreakfastUI {
             </div>
 
             <!-- Expanded Details Slot -->
-            <div class="report-details-panel mt-3 rounded-xl bg-white p-3 border border-slate-200" hidden></div>
+            <div class="report-details-panel mt-3 rounded-xl bg-white p-3 border border-slate-200" ${isAutoExpanded ? "" : "hidden"}></div>
           </div>
         `;
       })
@@ -1231,13 +1235,25 @@ export class BreakfastUI {
           if (icon) {
             icon.className = isHidden ? "fa-solid fa-chevron-up text-xs" : "fa-solid fa-chevron-down text-xs";
           }
-          if (isHidden && !panel.dataset.loaded) {
+          if (isHidden) {
             panel.dataset.loaded = "true";
-            onInspectReport(btn.dataset.date, btn.dataset.brand, panel);
+            onInspectReport(btn.dataset.date, btn.dataset.brand, panel, query);
           }
         }
       });
     });
+
+    // If query is provided, auto-load the inspected tables
+    if (hasQuery) {
+      this.elements.reportsListContainer.querySelectorAll(".report-card").forEach((card) => {
+        const btn = card.querySelector(".btn-inspect-report");
+        const panel = card.querySelector(".report-details-panel");
+        if (btn && panel) {
+          panel.dataset.loaded = "true";
+          onInspectReport(btn.dataset.date, btn.dataset.brand, panel, query);
+        }
+      });
+    }
   }
 
   openTableManager(brand, tables = [], { onEditTable, onDeleteTable }) {

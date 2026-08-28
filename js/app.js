@@ -1299,7 +1299,7 @@ class BreakfastApp {
     const date = this.ui.elements.reportDateFilter?.value || "";
     const query = this.ui.elements.reportSearchInput?.value?.trim() || "";
 
-    const result = await fetchReportsFromCloud({ brand, date, query, full: false });
+    const result = await fetchReportsFromCloud({ brand, date, query, full: Boolean(query) });
 
     if (!result.success) {
       this.ui.renderReportsError(result.error || "Unable to reach Cloudflare D1 database. Check network connection.");
@@ -1307,8 +1307,9 @@ class BreakfastApp {
     }
 
     this.ui.renderReportsList(result.reports, {
+      query,
       onExportReport: (d, b) => this.handleExportPastReport(d, b),
-      onInspectReport: (d, b, p) => this.handleInspectPastReport(d, b, p)
+      onInspectReport: (d, b, p, q) => this.handleInspectPastReport(d, b, p, q)
     });
   }
 
@@ -1329,7 +1330,7 @@ class BreakfastApp {
     }
   }
 
-  async handleInspectPastReport(serviceDate, brand, panelElement) {
+  async handleInspectPastReport(serviceDate, brand, panelElement, query = "") {
     panelElement.innerHTML = `<div class="text-xs text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading check-ins...</div>`;
     const reportData = await fetchFullReport(serviceDate, brand);
     if (!reportData || !Array.isArray(reportData.checkIns) || reportData.checkIns.length === 0) {
@@ -1337,64 +1338,124 @@ class BreakfastApp {
       return;
     }
 
-    const checkIns = reportData.checkIns;
-    const rowsHtml = checkIns
-      .slice(0, 100)
-      .map((c) => {
-        const room = escapeHtml(c.roomNumber || c.displayLocation || "-");
-        const name = escapeHtml(c.guestName || "-");
-        const table = escapeHtml(c.tableNumber || "-");
-        const guests = c.actualGuests || (Number(c.adults) || 0) + (Number(c.children) || 0);
+    const allCheckIns = reportData.checkIns;
+    const currentQuery = (query || this.ui.elements.reportSearchInput?.value || "").trim();
 
-        const inTime = c.timestamp ? formatTime(c.timestamp) : (c.timeLabel || "-");
-        const outTime = c.checkedOutAt ? formatTime(c.checkedOutAt) : (c.checkedOut ? "Checked out" : '<span class="text-amber-600 font-bold">Active</span>');
+    const renderTableWithFilter = (activeFilter) => {
+      const q = activeFilter.toLowerCase();
+      const qClean = q.replace(/^0+/, "");
 
-        let statusBadge = "";
-        const isIncluded = c.breakfastStatus === "included" && !c.entitlementExceeded;
-        if (isIncluded) {
-          statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-800">Included</span>';
-        } else if (c.paid) {
-          const paidTime = c.paidAt ? ` (${formatTime(c.paidAt)})` : "";
-          statusBadge = `<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800">Paid${escapeHtml(paidTime)}</span>`;
-        } else {
-          statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-800">Unpaid</span>';
-        }
+      const filteredCheckIns = q
+        ? allCheckIns.filter((c) => {
+            const roomRaw = String(c.roomNumber || c.displayLocation || "").toLowerCase();
+            const roomClean = roomRaw.replace(/^0+/, "");
+            const name = String(c.guestName || "").toLowerCase();
+            const table = String(c.tableNumber || "").toLowerCase();
+            const guestType = String(c.guestType || "").toLowerCase();
+            const mealPlan = String(c.mealPlan || "").toLowerCase();
+            const status = String(c.breakfastStatus || "").toLowerCase();
 
-        return `
-          <tr class="border-b border-slate-100 text-[11px] hover:bg-slate-50/80">
-            <td class="py-1.5 px-2 font-bold text-slate-900">${room}</td>
-            <td class="py-1.5 px-2 text-slate-700 max-w-[120px] truncate">${name}</td>
-            <td class="py-1.5 px-2 font-black text-slate-800">${table}</td>
-            <td class="py-1.5 px-2 text-center text-slate-600 font-semibold">${guests}</td>
-            <td class="py-1.5 px-2 text-slate-500">${inTime}</td>
-            <td class="py-1.5 px-2 text-slate-500">${outTime}</td>
-            <td class="py-1.5 px-2">${statusBadge}</td>
-          </tr>
+            return (
+              roomRaw.includes(q) ||
+              (qClean && roomClean.includes(qClean)) ||
+              name.includes(q) ||
+              table.includes(q) ||
+              guestType.includes(q) ||
+              mealPlan.includes(q) ||
+              status.includes(q) ||
+              (q === "paid" && Boolean(c.paid)) ||
+              (q === "unpaid" && !c.paid && (c.breakfastStatus === "payment" || c.guestType === "Apartment" || c.guestType === "Walk-In" || c.entitlementExceeded)) ||
+              (q === "active" && !c.checkedOut) ||
+              (q === "out" && Boolean(c.checkedOut))
+            );
+          })
+        : allCheckIns;
+
+      if (filteredCheckIns.length === 0) {
+        panelElement.innerHTML = `
+          <div class="rounded-xl bg-slate-50 p-4 text-center">
+            <p class="text-xs font-bold text-slate-500">No check-ins found matching "${escapeHtml(activeFilter)}" in this report.</p>
+            <button type="button" class="btn-show-all-records mt-2 inline-flex items-center gap-1 text-xs font-bold text-primary underline">
+              Show all (${allCheckIns.length}) records
+            </button>
+          </div>
         `;
-      })
-      .join("");
+        panelElement.querySelector(".btn-show-all-records")?.addEventListener("click", () => renderTableWithFilter(""));
+        return;
+      }
 
-    panelElement.innerHTML = `
-      <div class="max-h-72 overflow-y-auto">
-        <table class="w-full text-left">
-          <thead>
-            <tr class="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200">
-              <th class="py-1.5 px-2">Room</th>
-              <th class="py-1.5 px-2">Guest</th>
-              <th class="py-1.5 px-2">Table</th>
-              <th class="py-1.5 px-2 text-center">Guests</th>
-              <th class="py-1.5 px-2">In Time</th>
-              <th class="py-1.5 px-2">Out Time</th>
-              <th class="py-1.5 px-2">Payment / Status</th>
+      const filterBanner = activeFilter
+        ? `
+          <div class="mb-2 flex items-center justify-between rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-primary">
+            <span><i class="fa-solid fa-filter mr-1.5"></i> Showing ${filteredCheckIns.length} of ${allCheckIns.length} records matching "${escapeHtml(activeFilter)}"</span>
+            <button type="button" class="btn-show-all-records text-[11px] font-bold text-slate-500 underline hover:text-slate-800">Show all (${allCheckIns.length})</button>
+          </div>
+        `
+        : "";
+
+      const rowsHtml = filteredCheckIns
+        .slice(0, 100)
+        .map((c) => {
+          const room = escapeHtml(c.roomNumber || c.displayLocation || "-");
+          const name = escapeHtml(c.guestName || "-");
+          const table = escapeHtml(c.tableNumber || "-");
+          const guests = c.actualGuests || (Number(c.adults) || 0) + (Number(c.children) || 0);
+
+          const inTime = c.timestamp ? formatTime(c.timestamp) : (c.timeLabel || "-");
+          const outTime = c.checkedOutAt ? formatTime(c.checkedOutAt) : (c.checkedOut ? "Checked out" : '<span class="text-amber-600 font-bold">Active</span>');
+
+          let statusBadge = "";
+          const isIncluded = c.breakfastStatus === "included" && !c.entitlementExceeded;
+          if (isIncluded) {
+            statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-800">Included</span>';
+          } else if (c.paid) {
+            const paidTime = c.paidAt ? ` (${formatTime(c.paidAt)})` : "";
+            statusBadge = `<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800">Paid${escapeHtml(paidTime)}</span>`;
+          } else {
+            statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-800">Unpaid</span>';
+          }
+
+          return `
+            <tr class="border-b border-slate-100 text-[11px] hover:bg-slate-50/80">
+              <td class="py-1.5 px-2 font-black text-slate-900">${room}</td>
+              <td class="py-1.5 px-2 text-slate-700 max-w-[120px] truncate">${name}</td>
+              <td class="py-1.5 px-2 font-black text-slate-800">${table}</td>
+              <td class="py-1.5 px-2 text-center text-slate-600 font-semibold">${guests}</td>
+              <td class="py-1.5 px-2 text-slate-500">${inTime}</td>
+              <td class="py-1.5 px-2 text-slate-500">${outTime}</td>
+              <td class="py-1.5 px-2">${statusBadge}</td>
             </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
-        ${checkIns.length > 100 ? `<div class="text-[10px] text-slate-400 text-center mt-1">Showing first 100 of ${checkIns.length} records</div>` : ""}
-      </div>
-    `;
+          `;
+        })
+        .join("");
+
+      panelElement.innerHTML = `
+        ${filterBanner}
+        <div class="max-h-72 overflow-y-auto">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200">
+                <th class="py-1.5 px-2">Room</th>
+                <th class="py-1.5 px-2">Guest</th>
+                <th class="py-1.5 px-2">Table</th>
+                <th class="py-1.5 px-2 text-center">Guests</th>
+                <th class="py-1.5 px-2">In Time</th>
+                <th class="py-1.5 px-2">Out Time</th>
+                <th class="py-1.5 px-2">Payment / Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          ${filteredCheckIns.length > 100 ? `<div class="text-[10px] text-slate-400 text-center mt-1">Showing first 100 of ${filteredCheckIns.length} matching records</div>` : ""}
+        </div>
+      `;
+
+      panelElement.querySelector(".btn-show-all-records")?.addEventListener("click", () => renderTableWithFilter(""));
+    };
+
+    renderTableWithFilter(currentQuery);
   }
 
   async handleOpenTableManager() {
