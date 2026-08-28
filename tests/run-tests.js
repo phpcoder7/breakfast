@@ -34,7 +34,8 @@ import {
   syncPaymentList,
   markPaymentPaid
 } from "../js/payment.js";
-import { getTablesForUser } from "../js/tables.js";
+import { getTablesForUser, parseTableList } from "../js/tables.js";
+import { canManageBrand, normalizeUsername } from "../js/auth.js";
 
 console.log("=== Running Comprehensive Architectural & Performance Test Suite ===");
 
@@ -351,6 +352,12 @@ test("tables: brand table configuration returns correct counts", () => {
 
   const ktbTables = getTablesForUser("KTB");
   assert.equal(ktbTables.length > 20, true);
+});
+
+test("auth: normalizeUsername and role permissions", () => {
+  assert.equal(normalizeUsername("  superadmin  "), "SUPERADMIN");
+  assert.equal(normalizeUsername("kca"), "KCA");
+  assert.equal(normalizeUsername("ktb"), "KTB");
 });
 
 // SUMMARY

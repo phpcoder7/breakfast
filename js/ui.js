@@ -384,7 +384,18 @@ export class BreakfastUI {
       kpiReportsCount: document.querySelector("#kpiReportsCount"),
       kpiCheckinsCount: document.querySelector("#kpiCheckinsCount"),
       kpiGuestsCount: document.querySelector("#kpiGuestsCount"),
-      kpiRevenueCount: document.querySelector("#kpiRevenueCount")
+      kpiRevenueCount: document.querySelector("#kpiRevenueCount"),
+      manageTablesButton: document.querySelector("#manageTablesButton"),
+      tableManagerModal: document.querySelector("#tableManagerModal"),
+      tableManagerCloseButton: document.querySelector("#tableManagerCloseButton"),
+      tableManagerDoneButton: document.querySelector("#tableManagerDoneButton"),
+      tableManagerBrandSubtitle: document.querySelector("#tableManagerBrandSubtitle"),
+      addTableForm: document.querySelector("#addTableForm"),
+      newTableInput: document.querySelector("#newTableInput"),
+      tableCountBadge: document.querySelector("#tableCountBadge"),
+      tableManagerGrid: document.querySelector("#tableManagerGrid"),
+      superAdminBrandWrap: document.querySelector("#superAdminBrandWrap"),
+      superAdminBrandSelect: document.querySelector("#superAdminBrandSelect")
     };
 
     this.bindRecentSearchClicks();
@@ -1044,6 +1055,84 @@ export class BreakfastUI {
             onInspectReport(btn.dataset.date, btn.dataset.brand, panel);
           }
         }
+      });
+    });
+  }
+
+  openTableManager(brand, tables = [], { onEditTable, onDeleteTable }) {
+    if (!this.elements.tableManagerModal) return;
+    if (this.elements.tableManagerBrandSubtitle) {
+      this.elements.tableManagerBrandSubtitle.textContent = `Property: ${brand} (Dynamic Cloudflare D1)`;
+    }
+    if (this.elements.tableCountBadge) {
+      this.elements.tableCountBadge.textContent = String(tables.length);
+    }
+    this.renderTableManagerGrid(brand, tables, { onEditTable, onDeleteTable });
+    this.elements.tableManagerModal.hidden = false;
+    this.elements.tableManagerModal.setAttribute("aria-hidden", "false");
+  }
+
+  closeTableManager() {
+    if (this.elements.tableManagerModal) {
+      this.elements.tableManagerModal.hidden = true;
+      this.elements.tableManagerModal.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  renderTableManagerGrid(brand, tables = [], { onEditTable, onDeleteTable }) {
+    if (!this.elements.tableManagerGrid) return;
+    if (this.elements.tableCountBadge) {
+      this.elements.tableCountBadge.textContent = String(tables.length);
+    }
+
+    if (tables.length === 0) {
+      this.elements.tableManagerGrid.innerHTML = `
+        <div class="col-span-full py-8 text-center text-xs font-bold text-slate-400">
+          No tables configured yet for ${escapeHtml(brand)}.
+        </div>
+      `;
+      return;
+    }
+
+    this.elements.tableManagerGrid.innerHTML = tables
+      .map(
+        (t) => `
+        <div class="group relative flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xs transition hover:border-primary hover:shadow-sm" data-table-number="${escapeHtml(t)}">
+          <span class="text-base font-black text-slate-900">${escapeHtml(t)}</span>
+          <div class="mt-1 flex items-center gap-1 opacity-80 group-hover:opacity-100">
+            <button
+              type="button"
+              class="btn-edit-table-row flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition hover:bg-blue-50 hover:text-primary"
+              title="Edit Table ${escapeHtml(t)}"
+              data-table="${escapeHtml(t)}"
+            >
+              <i class="fa-solid fa-pen text-[10px]"></i>
+            </button>
+            <button
+              type="button"
+              class="btn-delete-table-row flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition hover:bg-red-50 hover:text-danger"
+              title="Delete Table ${escapeHtml(t)}"
+              data-table="${escapeHtml(t)}"
+            >
+              <i class="fa-solid fa-trash text-[10px]"></i>
+            </button>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+
+    this.elements.tableManagerGrid.querySelectorAll(".btn-edit-table-row").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onEditTable(btn.dataset.table);
+      });
+    });
+
+    this.elements.tableManagerGrid.querySelectorAll(".btn-delete-table-row").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onDeleteTable(btn.dataset.table);
       });
     });
   }

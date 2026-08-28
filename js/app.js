@@ -19,8 +19,25 @@ import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
 import { exactRoomMatch, globalSearchIndex, searchGuests } from "./search.js";
 import { BreakfastUI } from "./ui.js";
-import { getBrandLogo, getCurrentUser, isLoggedIn, login, logout } from "./auth.js";
-import { getTablesForUser } from "./tables.js";
+import {
+  canManageBrand,
+  getActiveBrand,
+  getBrandLogo,
+  getCurrentUser,
+  getCurrentUserProfile,
+  isLoggedIn,
+  isSuperAdmin,
+  login,
+  logout,
+  setActiveBrand
+} from "./auth.js";
+import {
+  addTableToCloud,
+  deleteTableFromCloud,
+  getTablesForUser,
+  syncTablesFromCloud,
+  updateTableInCloud
+} from "./tables.js";
 import {
   BREAKFAST_STATUS,
   clearStoredState,
@@ -146,7 +163,12 @@ class BreakfastApp {
     elements.reportBrandFilter?.addEventListener("change", () => this.loadReportsDashboardData());
     elements.reportDateFilter?.addEventListener("change", () => this.loadReportsDashboardData());
     elements.reportSearchInput?.addEventListener("input", () => this.debounceLoadReports());
-    elements.syncCurrentDayCloudButton?.addEventListener("click", () => this.handleManualCloudSync());
+    // Table Management Events
+    elements.manageTablesButton?.addEventListener("click", () => this.handleOpenTableManager());
+    elements.tableManagerCloseButton?.addEventListener("click", () => this.ui.closeTableManager());
+    elements.tableManagerDoneButton?.addEventListener("click", () => this.ui.closeTableManager());
+    elements.addTableForm?.addEventListener("submit", (e) => this.handleAddTableSubmit(e));
+    elements.superAdminBrandSelect?.addEventListener("change", (e) => this.handleSuperAdminBrandChange(e));
     elements.paymentTableBody?.addEventListener("click", (event) => {
       const editTableButton = event.target.closest("[data-edit-table-id]");
       if (editTableButton) {
@@ -233,9 +255,19 @@ class BreakfastApp {
     document.querySelector("#mobileExportAccountingButton")?.addEventListener("click", () => this.handleExportAccounting());
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !this.ui.elements.modal.hidden) {
-        this.ui.closeModal();
-        this.focusSearch();
+      if (event.key === "Escape") {
+        if (!this.ui.elements.tableManagerModal?.hidden) {
+          this.ui.closeTableManager();
+          return;
+        }
+        if (!this.ui.elements.reportsDashboardModal?.hidden) {
+          this.ui.closeReportsDashboard();
+          return;
+        }
+        if (!this.ui.elements.modal?.hidden) {
+          this.ui.closeModal();
+          this.focusSearch();
+        }
       }
     });
   }
@@ -268,7 +300,7 @@ class BreakfastApp {
 
     this.ui.renderCheckIns(checkInsForTable);
     this.ui.renderPayments(paymentForTable);
-    this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
+    this.ui.renderTables(getTablesForUser(getActiveBrand()), this.state.checkIns);
     const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast || (this.state.guests && this.state.guests.length > 0);
     const manualReady = Boolean(this.selectedGuest?.statusOverride);
     const guestReady = Boolean(this.selectedGuest);
@@ -1048,7 +1080,7 @@ class BreakfastApp {
   }
 
   async syncCurrentStateToCloud(showToast = false) {
-    const brand = getCurrentUser();
+    const brand = getActiveBrand();
     const serviceDate = this.state.serviceDate || todayKey();
     if (!brand) return { success: false, error: "Not logged in" };
 
@@ -1071,9 +1103,13 @@ class BreakfastApp {
   handleOpenReportsDashboard() {
     this.ui.openReportsDashboard();
     if (this.ui.elements.reportBrandFilter && !this.ui.elements.reportBrandFilter.dataset.touched) {
-      const currentUser = getCurrentUser();
-      if (currentUser === "KCA" || currentUser === "KTB") {
-        this.ui.elements.reportBrandFilter.value = currentUser;
+      if (isSuperAdmin()) {
+        this.ui.elements.reportBrandFilter.value = "ALL";
+      } else {
+        const active = getActiveBrand();
+        this.ui.elements.reportBrandFilter.value = active;
+        // Restrict brand selection for standard brand admins
+        this.ui.elements.reportBrandFilter.disabled = true;
       }
     }
     this.loadReportsDashboardData();
@@ -1196,6 +1232,118 @@ class BreakfastApp {
     `;
   }
 
+  async handleOpenTableManager() {
+    const currentBrand = getActiveBrand();
+    if (!canManageBrand(currentBrand)) {
+      this.ui.renderMessage("You do not have permission to manage tables for this brand.", "warning");
+      return;
+    }
+
+    await syncTablesFromCloud(currentBrand);
+    const tables = getTablesForUser(currentBrand);
+
+    this.ui.openTableManager(currentBrand, tables, {
+      onEditTable: (num) => this.handlePromptEditTable(currentBrand, num),
+      onDeleteTable: (num) => this.handlePromptDeleteTable(currentBrand, num)
+    });
+  }
+
+  async handleAddTableSubmit(event) {
+    event.preventDefault();
+    const currentBrand = getActiveBrand();
+    const input = this.ui.elements.newTableInput;
+    const value = input?.value?.trim();
+    if (!value) return;
+
+    // Support comma separated or range (e.g. "91,92,93" or single "91")
+    const parts = value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    for (const num of parts) {
+      await addTableToCloud(currentBrand, num);
+    }
+
+    if (input) input.value = "";
+    this.ui.renderMessage(`Table(s) ${value} added to ${currentBrand}.`, "success");
+
+    const updatedTables = getTablesForUser(currentBrand);
+    this.ui.renderTableManagerGrid(currentBrand, updatedTables, {
+      onEditTable: (num) => this.handlePromptEditTable(currentBrand, num),
+      onDeleteTable: (num) => this.handlePromptDeleteTable(currentBrand, num)
+    });
+    this.refreshUi();
+  }
+
+  async handlePromptEditTable(brand, oldTableNumber) {
+    const formValues = await this.ui.promptForm({
+      title: `Edit Table ${oldTableNumber}`,
+      submitLabel: "Save Table",
+      fields: [
+        {
+          name: "newTableNumber",
+          label: "New Table Number / Name",
+          value: oldTableNumber,
+          required: true
+        }
+      ]
+    });
+
+    if (!formValues || !formValues.newTableNumber) return;
+    const newNum = formValues.newTableNumber.trim();
+    if (newNum === oldTableNumber) return;
+
+    const res = await updateTableInCloud(brand, oldTableNumber, newNum);
+    if (res.success) {
+      this.ui.renderMessage(`Table ${oldTableNumber} updated to ${newNum}.`, "success");
+    } else {
+      this.ui.renderMessage(res.message || "Failed to update table", "error");
+    }
+
+    const updatedTables = getTablesForUser(brand);
+    this.ui.renderTableManagerGrid(brand, updatedTables, {
+      onEditTable: (num) => this.handlePromptEditTable(brand, num),
+      onDeleteTable: (num) => this.handlePromptDeleteTable(brand, num)
+    });
+    this.refreshUi();
+  }
+
+  async handlePromptDeleteTable(brand, tableNumber) {
+    const confirmed = await this.ui.promptConfirm({
+      title: "Delete Table",
+      message: `Are you sure you want to remove Table ${tableNumber} from ${brand}?`,
+      confirmLabel: "Delete Table",
+      danger: true
+    });
+
+    if (!confirmed) return;
+
+    const res = await deleteTableFromCloud(brand, tableNumber);
+    if (res.success) {
+      this.ui.renderMessage(`Table ${tableNumber} deleted from ${brand}.`, "success");
+    } else {
+      this.ui.renderMessage(res.message || "Failed to delete table", "error");
+    }
+
+    const updatedTables = getTablesForUser(brand);
+    this.ui.renderTableManagerGrid(brand, updatedTables, {
+      onEditTable: (num) => this.handlePromptEditTable(brand, num),
+      onDeleteTable: (num) => this.handlePromptDeleteTable(brand, num)
+    });
+    this.refreshUi();
+  }
+
+  handleSuperAdminBrandChange(event) {
+    const selectedBrand = event.target.value;
+    setActiveBrand(selectedBrand);
+    applyBrandLogo(selectedBrand);
+    this.ui.renderMessage(`Super Admin switched to ${selectedBrand} engine.`, "info");
+    syncTablesFromCloud(selectedBrand).then(() => {
+      this.refreshUi();
+    });
+  }
+
   focusSearch() {
     this.ui.elements.searchInput.focus();
   }
@@ -1254,8 +1402,14 @@ function showAppScreen() {
   const appShell = document.querySelector("#appShell");
   const userBadge = document.querySelector("#currentUserBadge");
   const mobileUserBadge = document.querySelector("#mobileUserBadge");
+  const superAdminBrandWrap = document.querySelector("#superAdminBrandWrap");
+  const superAdminBrandSelect = document.querySelector("#superAdminBrandSelect");
   const currentUser = getCurrentUser();
-  const userLabel = `User: ${currentUser}`;
+  const profile = getCurrentUserProfile();
+  const activeBrand = getActiveBrand();
+
+  const userRoleText = isSuperAdmin() ? "Super Admin" : "Host";
+  const userLabel = `${currentUser} (${userRoleText})`;
 
   if (loginScreen) {
     loginScreen.hidden = true;
@@ -1267,10 +1421,22 @@ function showAppScreen() {
     userBadge.textContent = userLabel;
   }
   if (mobileUserBadge) {
-    mobileUserBadge.textContent = currentUser;
+    mobileUserBadge.textContent = userLabel;
   }
 
-  applyBrandLogo(currentUser);
+  // Super Admin Hotel Switcher display
+  if (superAdminBrandWrap && superAdminBrandSelect) {
+    if (isSuperAdmin()) {
+      superAdminBrandWrap.classList.remove("hidden");
+      superAdminBrandWrap.classList.add("inline-flex");
+      superAdminBrandSelect.value = activeBrand;
+    } else {
+      superAdminBrandWrap.classList.add("hidden");
+      superAdminBrandWrap.classList.remove("inline-flex");
+    }
+  }
+
+  applyBrandLogo(activeBrand);
 }
 
 function bindLoginForm() {
@@ -1286,22 +1452,24 @@ function bindLoginForm() {
     applyBrandLogo(event.target.value);
   });
 
-  loginForm.addEventListener("submit", (event) => {
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const username = document.querySelector("#loginUsername")?.value || "";
     const password = document.querySelector("#loginPassword")?.value || "";
 
-    if (login(username, password)) {
+    const res = await login(username, password);
+    if (res.success) {
       if (loginError) {
         loginError.hidden = true;
       }
-      applyBrandLogo(username);
+      applyBrandLogo(getActiveBrand());
       launchBreakfastApp();
       return;
     }
 
     if (loginError) {
+      loginError.textContent = res.error || "Invalid username or password.";
       loginError.hidden = false;
     }
     document.querySelector("#loginPassword")?.focus();
