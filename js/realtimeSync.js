@@ -30,21 +30,22 @@ export class RealtimeSyncEngine {
     this.triggerSync();
 
     this.timer = setInterval(() => {
-      if (document.visibilityState !== "hidden" && navigator.onLine) {
+      if (document.visibilityState !== "hidden") {
         this.triggerSync();
       }
     }, this.pollInterval);
 
-    window.addEventListener("online", () => this.triggerSync());
+    window.addEventListener("online", () => {
+      // Immediate flush when online event fires
+      this.triggerSync();
+    });
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && navigator.onLine) {
+      if (document.visibilityState === "visible") {
         this.triggerSync();
       }
     });
     window.addEventListener("focus", () => {
-      if (navigator.onLine) {
-        this.triggerSync();
-      }
+      this.triggerSync();
     });
   }
 
@@ -58,17 +59,15 @@ export class RealtimeSyncEngine {
   async queueMutation(type, data) {
     try {
       await addOutboxMutation(type, data);
-      // Immediately push outbox if online
-      if (navigator.onLine) {
-        this.triggerSync();
-      }
+      // Attempt immediate push
+      this.triggerSync();
     } catch (err) {
       console.warn("Could not queue mutation offline:", err);
     }
   }
 
   async syncRoster(guests, fileNames = {}, filesLoaded = {}) {
-    if (!navigator.onLine || !Array.isArray(guests) || guests.length === 0) return;
+    if (!Array.isArray(guests) || guests.length === 0) return;
     try {
       const brand = this.getBrand();
       const serviceDate = this.getServiceDate();
@@ -102,7 +101,7 @@ export class RealtimeSyncEngine {
   }
 
   async triggerSync() {
-    if (this.isSyncing || !navigator.onLine) return;
+    if (this.isSyncing) return;
     this.isSyncing = true;
     this.onSyncStatusChange({ syncing: true });
 
@@ -123,8 +122,8 @@ export class RealtimeSyncEngine {
 
       this.onSyncStatusChange({ syncing: false, success: true, timestamp: new Date() });
     } catch (error) {
-      console.warn("Realtime sync tick notice:", error.message || error);
-      this.onSyncStatusChange({ syncing: false, error: error.message });
+      // Offline network error handled gracefully
+      this.onSyncStatusChange({ syncing: false, error: error.message || "Offline" });
     } finally {
       this.isSyncing = false;
     }
@@ -169,9 +168,7 @@ export class RealtimeSyncEngine {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const url = `/api/sync?brand=${encodeURIComponent(brand)}&date=${encodeURIComponent(serviceDate)}${
-      this.lastSyncTimestamp ? `&since=${encodeURIComponent(this.lastSyncTimestamp)}` : ""
-    }`;
+    const url = `/api/sync?brand=${encodeURIComponent(brand)}&date=${encodeURIComponent(serviceDate)}`;
 
     const response = await fetch(url, { headers });
     if (!response.ok) return;

@@ -108,16 +108,9 @@ export async function onRequestGet({ request, env }) {
       console.warn("Auto-backfill notice:", backfillErr);
     }
 
-    // 1. Fetch checkin events
-    let checkinSql = "SELECT * FROM checkin_events WHERE brand = ? AND service_date = ?";
+    // 1. Fetch checkin events for today's session
+    const checkinSql = "SELECT * FROM checkin_events WHERE brand = ? AND service_date = ? ORDER BY timestamp DESC";
     const checkinParams = [brand, serviceDate];
-
-    if (since) {
-      checkinSql += " AND updated_at > ?";
-      checkinParams.push(since);
-    }
-    checkinSql += " ORDER BY timestamp DESC";
-
     const checkinsStmt = db.prepare(checkinSql).bind(...checkinParams);
     const { results: checkins } = await checkinsStmt.all();
 
@@ -147,12 +140,8 @@ export async function onRequestGet({ request, env }) {
     }
 
     // 3. Fetch payment events
-    let paymentsSql = "SELECT * FROM payment_events WHERE brand = ? AND service_date = ?";
+    const paymentsSql = "SELECT * FROM payment_events WHERE brand = ? AND service_date = ? ORDER BY timestamp DESC";
     const paymentParams = [brand, serviceDate];
-    if (since) {
-      paymentsSql += " AND updated_at > ?";
-      paymentParams.push(since);
-    }
     const paymentsStmt = db.prepare(paymentsSql).bind(...paymentParams);
     const { results: payments } = await paymentsStmt.all();
 
@@ -305,7 +294,7 @@ export async function onRequestPost({ request, env }) {
               data.tableNumber || "",
               Number(data.adults) || 0,
               Number(data.children) || 0,
-              Number(data.actualGuests) || 1,
+              Number(data.actualGuests) || (Number(data.adults) || 0) + (Number(data.children) || 0) || 1,
               Number(data.extraGuests) || 0,
               data.entitlementExceeded ? 1 : 0,
               data.guestType || "Hotel",
