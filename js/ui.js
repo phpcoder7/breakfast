@@ -395,7 +395,9 @@ export class BreakfastUI {
       tableCountBadge: document.querySelector("#tableCountBadge"),
       tableManagerGrid: document.querySelector("#tableManagerGrid"),
       superAdminBrandWrap: document.querySelector("#superAdminBrandWrap"),
-      superAdminBrandSelect: document.querySelector("#superAdminBrandSelect")
+      superAdminBrandSelect: document.querySelector("#superAdminBrandSelect"),
+      syncStatusBadge: document.querySelector("#syncStatusBadge"),
+      mobileSyncStatusBadge: document.querySelector("#mobileSyncStatusBadge")
     };
 
     this.bindRecentSearchClicks();
@@ -471,6 +473,46 @@ export class BreakfastUI {
       mobileElement.textContent = `${shortLabel}: Reading...`;
       mobileElement.title = fileName;
     }
+  }
+
+  setSyncStatus({ syncing = false, success = false, error = "" } = {}) {
+    const badges = [this.elements.syncStatusBadge, this.elements.mobileSyncStatusBadge].filter(Boolean);
+    if (!badges.length) return;
+
+    badges.forEach((badge) => {
+      if (!navigator.onLine) {
+        badge.className = badge.id === "syncStatusBadge"
+          ? "inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 border border-amber-200"
+          : "inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 border border-amber-200 xl:hidden";
+        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span><span>Offline</span>';
+        badge.title = "Offline mode. Changes saved locally.";
+        return;
+      }
+
+      if (syncing) {
+        badge.className = badge.id === "syncStatusBadge"
+          ? "inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-primary border border-blue-200"
+          : "inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-primary border border-blue-200 xl:hidden";
+        badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i><span>Syncing</span>';
+        badge.title = "Syncing with cloud database...";
+        return;
+      }
+
+      if (error) {
+        badge.className = badge.id === "syncStatusBadge"
+          ? "inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 border border-rose-200"
+          : "inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 border border-rose-200 xl:hidden";
+        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span><span>Retry</span>';
+        badge.title = `Sync notice: ${error}`;
+        return;
+      }
+
+      badge.className = badge.id === "syncStatusBadge"
+        ? "inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200"
+        : "inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200 xl:hidden";
+      badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live</span>';
+      badge.title = "Realtime Multi-Device Sync Active";
+    });
   }
 
   pushRecentRoom(guest) {

@@ -51,6 +51,8 @@ import {
   writeStoredState
 } from "./utils.js";
 import { parseMealPlanXml, parsePackageForecastXml } from "./xmlParser.js";
+import { RealtimeSyncEngine } from "./realtimeSync.js";
+import { putCheckIn, clearDailyDb } from "./offlineDb.js";
 
 class BreakfastApp {
   constructor() {
@@ -61,6 +63,12 @@ class BreakfastApp {
       activeIndex: -1
     };
     this.selectedGuest = null;
+    this.realtimeSync = new RealtimeSyncEngine({
+      getBrand: () => getActiveBrand(),
+      getServiceDate: () => this.state.serviceDate || todayKey(),
+      onRemoteUpdate: (data) => this.handleRemoteSyncUpdate(data),
+      onSyncStatusChange: (status) => this.ui.setSyncStatus(status)
+    });
   }
 
   createInitialState() {
@@ -104,6 +112,7 @@ class BreakfastApp {
     if (window.matchMedia("(max-width: 767px)").matches) {
       this.ui.setMobileView("search");
     }
+    this.realtimeSync.start();
   }
 
   bindEvents() {
@@ -307,6 +316,68 @@ class BreakfastApp {
     this.ui.setExportState(Boolean(this.state.checkIns.length));
     const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkin";
     this.ui.activateTab(activeTab);
+  }
+
+  handleRemoteSyncUpdate(remoteData) {
+    if (!remoteData || !Array.isArray(remoteData.checkins) || remoteData.checkins.length === 0) {
+      return;
+    }
+
+    let stateChanged = false;
+    const existingMap = new Map(this.state.checkIns.map((c) => [c.id, c]));
+
+    for (const remote of remoteData.checkins) {
+      const local = existingMap.get(remote.id);
+      if (!local) {
+        const mappedRecord = {
+          id: remote.id,
+          roomNumber: remote.room_number,
+          guestName: remote.guest_name,
+          tableNumber: remote.table_number,
+          adults: remote.adults,
+          children: remote.children,
+          actualGuests: remote.actual_guests,
+          extraGuests: remote.extra_guests,
+          entitlementExceeded: Boolean(remote.entitlement_exceeded),
+          guestType: remote.guest_type,
+          mealPlan: remote.meal_plan,
+          products: remote.products,
+          breakfastStatus: remote.breakfast_status,
+          statusOverride: Boolean(remote.status_override),
+          checkedOut: Boolean(remote.checked_out),
+          checkedOutAt: remote.checked_out_at,
+          paid: Boolean(remote.paid),
+          paidAt: remote.paid_at,
+          timestamp: remote.timestamp
+        };
+        existingMap.set(remote.id, mappedRecord);
+        putCheckIn(mappedRecord, getActiveBrand(), this.state.serviceDate).catch(() => {});
+        stateChanged = true;
+      } else {
+        if (
+          Boolean(remote.checked_out) !== Boolean(local.checkedOut) ||
+          Boolean(remote.paid) !== Boolean(local.paid) ||
+          remote.table_number !== local.tableNumber
+        ) {
+          local.checkedOut = Boolean(remote.checked_out);
+          local.checkedOutAt = remote.checked_out_at;
+          local.paid = Boolean(remote.paid);
+          local.paidAt = remote.paid_at;
+          local.tableNumber = remote.table_number;
+          putCheckIn(local, getActiveBrand(), this.state.serviceDate).catch(() => {});
+          stateChanged = true;
+        }
+      }
+    }
+
+    if (stateChanged) {
+      this.state.checkIns = Array.from(existingMap.values()).sort((a, b) =>
+        String(b.timestamp).localeCompare(String(a.timestamp))
+      );
+      this.state.paymentList = syncPaymentList(this.state.checkIns);
+      this.persistState();
+      this.refreshUi();
+    }
   }
 
   async handleFileUpload(type, file, inputElement) {
@@ -601,6 +672,7 @@ class BreakfastApp {
     let nextCheckIns = this.state.checkIns;
     for (const occupant of occupants) {
       nextCheckIns = checkOutCheckIn(nextCheckIns, occupant.id);
+      this.realtimeSync?.queueMutation("CHECKOUT", { id: occupant.id, checkedOutAt: new Date().toISOString() });
     }
     this.state.checkIns = nextCheckIns;
     this.state.paymentList = syncPaymentList(this.state.checkIns);
@@ -681,6 +753,8 @@ class BreakfastApp {
     );
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    putCheckIn(updated, getActiveBrand(), this.state.serviceDate).catch(() => {});
+    this.realtimeSync?.queueMutation("CHECKIN", updated);
 
     if (clearForm) {
       this.ui.elements.tableNumberInput.value = "";
@@ -892,6 +966,7 @@ class BreakfastApp {
     this.state.checkIns = markPaymentPaid(this.state.checkIns, paymentId);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    this.realtimeSync?.queueMutation("PAYMENT_PAID", { id: paymentId, paidAt: new Date().toISOString() });
     this.refreshUi();
     this.ui.renderMessage(`${payment.displayLocation} marked as paid.`, "success");
   }
@@ -923,6 +998,7 @@ class BreakfastApp {
     this.state.checkIns = checkOutCheckIn(this.state.checkIns, checkInId);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    this.realtimeSync?.queueMutation("CHECKOUT", { id: checkInId, checkedOutAt: new Date().toISOString() });
     this.refreshUi();
     this.ui.renderMessage(
       `${roomLabel} checked out. Table ${tableLabel} is free.`,
@@ -975,6 +1051,7 @@ class BreakfastApp {
     this.state.checkIns = updateCheckInTableNumber(this.state.checkIns, checkInId, nextTable);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    this.realtimeSync?.queueMutation("TABLE_CHANGE", { id: checkInId, tableNumber: nextTable });
     this.refreshUi();
     this.ui.renderMessage(
       `Table updated for ${record.roomNumber}: ${record.tableNumber || "-"} → ${nextTable}.`,
@@ -986,6 +1063,8 @@ class BreakfastApp {
     this.state.checkIns.unshift(record);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    putCheckIn(record, getActiveBrand(), this.state.serviceDate).catch(() => {});
+    this.realtimeSync?.queueMutation("CHECKIN", record);
     this.syncCurrentStateToCloud();
     this.ui.renderMessage(message, tone);
     this.ui.elements.tableNumberInput.value = "";
@@ -1020,6 +1099,7 @@ class BreakfastApp {
     }
 
     clearStoredState();
+    clearDailyDb(getActiveBrand(), this.state.serviceDate).catch(() => {});
     globalSearchIndex.clear();
 
     this.state.checkIns = [];
@@ -1346,6 +1426,7 @@ class BreakfastApp {
     setActiveBrand(selectedBrand);
     applyBrandLogo(selectedBrand);
     this.ui.renderMessage(`Super Admin switched to ${selectedBrand} engine.`, "info");
+    this.realtimeSync?.triggerSync();
     syncTablesFromCloud(selectedBrand).then(() => {
       this.refreshUi();
     });
@@ -1485,6 +1566,7 @@ function bindLoginForm() {
 
 function bindLogoutButton() {
   document.querySelector("#logoutButton")?.addEventListener("click", () => {
+    window.breakfastApp?.realtimeSync?.stop();
     logout();
     window.breakfastApp = null;
     showLoginScreen();

@@ -30,6 +30,11 @@ const BRAND_LOGOS = {
 const AUTH_USER_KEY = "breakfast-auth-user";
 const AUTH_PROFILE_KEY = "breakfast-auth-profile";
 const ACTIVE_BRAND_KEY = "breakfast-active-brand";
+const AUTH_TOKEN_KEY = "breakfast-auth-token";
+
+export function getAuthToken() {
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
+}
 
 export function normalizeUsername(username) {
   return String(username || "").trim().toUpperCase();
@@ -57,8 +62,11 @@ export async function login(username, password) {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.user) {
+        if (data.token) {
+          sessionStorage.setItem(AUTH_TOKEN_KEY, data.token);
+        }
         saveSession(data.user);
-        return { success: true, user: data.user };
+        return { success: true, user: data.user, token: data.token };
       }
     }
   } catch {
@@ -100,6 +108,7 @@ export function logout() {
   sessionStorage.removeItem(AUTH_USER_KEY);
   sessionStorage.removeItem(AUTH_PROFILE_KEY);
   sessionStorage.removeItem(ACTIVE_BRAND_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
 export function isLoggedIn() {

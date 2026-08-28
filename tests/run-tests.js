@@ -35,6 +35,13 @@ import {
 import { getTablesForUser, parseTableList } from "../js/tables.js";
 import { canManageBrand, normalizeUsername } from "../js/auth.js";
 
+import {
+  hashPassword,
+  verifyPassword,
+  signJwt,
+  verifyJwt
+} from "../functions/api/_authHelper.js";
+
 console.log("=== Running Comprehensive Architectural & Performance Test Suite ===");
 
 let passed = 0;
@@ -43,6 +50,18 @@ let failed = 0;
 function test(name, fn) {
   try {
     fn();
+    console.log(`  ✓ ${name}`);
+    passed++;
+  } catch (err) {
+    console.error(`  ✗ ${name}`);
+    console.error(err);
+    failed++;
+  }
+}
+
+async function testAsync(name, fn) {
+  try {
+    await fn();
     console.log(`  ✓ ${name}`);
     passed++;
   } catch (err) {
@@ -351,8 +370,43 @@ test("auth: normalizeUsername and role permissions", () => {
   assert.equal(normalizeUsername("ktb"), "KTB");
 });
 
-// SUMMARY
-console.log(`\nTest results: ${passed} passed, ${failed} failed.`);
-if (failed > 0) {
-  process.exit(1);
+async function runAllTests() {
+  await testAsync("crypto-auth: hashPassword and verifyPassword with Web Crypto", async () => {
+    const plain = "SUPERadmin2026";
+    const hashed = await hashPassword(plain);
+    assert.equal(hashed.startsWith("sha256:"), true);
+
+    const isValid = await verifyPassword(plain, hashed);
+    assert.equal(isValid, true);
+
+    const isInvalid = await verifyPassword("WrongPassword", hashed);
+    assert.equal(isInvalid, false);
+
+    // Plaintext fallback verification
+    const isPlainMatch = await verifyPassword("KCAadmin", "KCAadmin");
+    assert.equal(isPlainMatch, true);
+  });
+
+  await testAsync("crypto-auth: signJwt and verifyJwt HMAC-SHA256 tokens", async () => {
+    const user = { username: "SUPERADMIN", role: "superadmin", brand: "ALL" };
+    const token = await signJwt(user, "test-secret-key");
+    assert.equal(typeof token, "string");
+    assert.equal(token.split(".").length, 3);
+
+    const payload = await verifyJwt(token, "test-secret-key");
+    assert.notEqual(payload, null);
+    assert.equal(payload.username, "SUPERADMIN");
+    assert.equal(payload.role, "superadmin");
+
+    const invalidPayload = await verifyJwt(token, "wrong-secret-key");
+    assert.equal(invalidPayload, null);
+  });
+
+  // SUMMARY
+  console.log(`\nTest results: ${passed} passed, ${failed} failed.`);
+  if (failed > 0) {
+    process.exit(1);
+  }
 }
+
+runAllTests();
