@@ -319,53 +319,64 @@ class BreakfastApp {
   }
 
   handleRemoteSyncUpdate(remoteData) {
-    if (!remoteData || !Array.isArray(remoteData.checkins) || remoteData.checkins.length === 0) {
+    if (!remoteData) {
       return;
     }
 
     let stateChanged = false;
     const existingMap = new Map(this.state.checkIns.map((c) => [c.id, c]));
 
-    for (const remote of remoteData.checkins) {
-      const local = existingMap.get(remote.id);
-      if (!local) {
-        const mappedRecord = {
-          id: remote.id,
-          roomNumber: remote.room_number,
-          guestName: remote.guest_name,
-          tableNumber: remote.table_number,
-          adults: remote.adults,
-          children: remote.children,
-          actualGuests: remote.actual_guests,
-          extraGuests: remote.extra_guests,
-          entitlementExceeded: Boolean(remote.entitlement_exceeded),
-          guestType: remote.guest_type,
-          mealPlan: remote.meal_plan,
-          products: remote.products,
-          breakfastStatus: remote.breakfast_status,
-          statusOverride: Boolean(remote.status_override),
-          checkedOut: Boolean(remote.checked_out),
-          checkedOutAt: remote.checked_out_at,
-          paid: Boolean(remote.paid),
-          paidAt: remote.paid_at,
-          timestamp: remote.timestamp
-        };
-        existingMap.set(remote.id, mappedRecord);
-        putCheckIn(mappedRecord, getActiveBrand(), this.state.serviceDate).catch(() => {});
-        stateChanged = true;
-      } else {
-        if (
-          Boolean(remote.checked_out) !== Boolean(local.checkedOut) ||
-          Boolean(remote.paid) !== Boolean(local.paid) ||
-          remote.table_number !== local.tableNumber
-        ) {
-          local.checkedOut = Boolean(remote.checked_out);
-          local.checkedOutAt = remote.checked_out_at;
-          local.paid = Boolean(remote.paid);
-          local.paidAt = remote.paid_at;
-          local.tableNumber = remote.table_number;
-          putCheckIn(local, getActiveBrand(), this.state.serviceDate).catch(() => {});
+    if (Array.isArray(remoteData.checkins) && remoteData.checkins.length > 0) {
+      for (const remote of remoteData.checkins) {
+        const local = existingMap.get(remote.id);
+        if (!local) {
+          const mappedRecord = {
+            id: remote.id,
+            roomNumber: remote.room_number,
+            displayLocation: remote.room_number,
+            guestName: remote.guest_name,
+            tableNumber: remote.table_number,
+            adults: remote.adults,
+            children: remote.children,
+            actualGuests: remote.actual_guests,
+            extraGuests: remote.extra_guests,
+            entitlementExceeded: Boolean(remote.entitlement_exceeded),
+            guestType: remote.guest_type,
+            mealPlan: remote.meal_plan,
+            products: remote.products,
+            breakfastStatus: remote.breakfast_status,
+            statusOverride: Boolean(remote.status_override),
+            checkedOut: Boolean(remote.checked_out),
+            checkedOutAt: remote.checked_out_at,
+            paid: Boolean(remote.paid),
+            paidAt: remote.paid_at,
+            timestamp: remote.timestamp
+          };
+          existingMap.set(remote.id, mappedRecord);
+          putCheckIn(mappedRecord, getActiveBrand(), this.state.serviceDate).catch(() => {});
           stateChanged = true;
+        } else {
+          const isDiff =
+            Boolean(remote.checked_out) !== Boolean(local.checkedOut) ||
+            Boolean(remote.paid) !== Boolean(local.paid) ||
+            String(remote.table_number) !== String(local.tableNumber) ||
+            Number(remote.actual_guests) !== Number(local.actualGuests) ||
+            Number(remote.extra_guests) !== Number(local.extraGuests) ||
+            remote.checked_out_at !== local.checkedOutAt ||
+            remote.paid_at !== local.paidAt;
+
+          if (isDiff) {
+            local.checkedOut = Boolean(remote.checked_out);
+            local.checkedOutAt = remote.checked_out_at;
+            local.paid = Boolean(remote.paid);
+            local.paidAt = remote.paid_at;
+            local.tableNumber = remote.table_number;
+            local.actualGuests = remote.actual_guests;
+            local.extraGuests = remote.extra_guests;
+            local.entitlementExceeded = Boolean(remote.entitlement_exceeded);
+            putCheckIn(local, getActiveBrand(), this.state.serviceDate).catch(() => {});
+            stateChanged = true;
+          }
         }
       }
     }

@@ -7,7 +7,6 @@ import {
   getDeviceId,
   getPendingOutboxMutations,
   openDatabase,
-  putCheckIn,
   removeOutboxMutations
 } from "./offlineDb.js";
 import { getAuthToken } from "./auth.js";
@@ -18,7 +17,7 @@ export class RealtimeSyncEngine {
     this.getServiceDate = getServiceDate;
     this.onRemoteUpdate = onRemoteUpdate || (() => {});
     this.onSyncStatusChange = onSyncStatusChange || (() => {});
-    this.pollInterval = 4000; // 4s polling
+    this.pollInterval = 3000; // 3s polling for instantaneous multi-device updates
     this.timer = null;
     this.isSyncing = false;
     this.lastSyncTimestamp = null;
@@ -29,6 +28,7 @@ export class RealtimeSyncEngine {
     this.stop();
     openDatabase().catch((err) => console.warn("IndexedDB init notice:", err));
     this.triggerSync();
+
     this.timer = setInterval(() => {
       if (document.visibilityState !== "hidden" && navigator.onLine) {
         this.triggerSync();
@@ -36,6 +36,16 @@ export class RealtimeSyncEngine {
     }, this.pollInterval);
 
     window.addEventListener("online", () => this.triggerSync());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        this.triggerSync();
+      }
+    });
+    window.addEventListener("focus", () => {
+      if (navigator.onLine) {
+        this.triggerSync();
+      }
+    });
   }
 
   stop() {
@@ -134,7 +144,9 @@ export class RealtimeSyncEngine {
 
     const result = await response.json();
     if (result.success) {
-      this.lastSyncTimestamp = result.serverTime;
+      if (result.serverTime) {
+        this.lastSyncTimestamp = result.serverTime;
+      }
       // Notify application of remote checkins and live table occupancy
       this.onRemoteUpdate({
         checkins: result.checkins || [],

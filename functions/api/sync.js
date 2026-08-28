@@ -36,6 +36,77 @@ export async function onRequestGet({ request, env }) {
     }
 
     const sessionId = `${brand}_${serviceDate}`;
+    const nowIso = new Date().toISOString();
+
+    // 0. Auto-backfill checkin_events from daily_reports if checkin_events is empty
+    try {
+      const countStmt = db
+        .prepare("SELECT COUNT(*) as cnt FROM checkin_events WHERE brand = ? AND service_date = ?")
+        .bind(brand, serviceDate);
+      const countRes = await countStmt.first();
+
+      if (!countRes || countRes.cnt === 0) {
+        const reportStmt = db
+          .prepare("SELECT report_data FROM daily_reports WHERE brand = ? AND service_date = ?")
+          .bind(brand, serviceDate);
+        const reportRow = await reportStmt.first();
+
+        if (reportRow && reportRow.report_data) {
+          const parsed = JSON.parse(reportRow.report_data);
+          const legacyCheckins = Array.isArray(parsed.checkIns) ? parsed.checkIns : [];
+
+          if (legacyCheckins.length > 0) {
+            const backfillStmts = [];
+            for (const c of legacyCheckins) {
+              const id = c.id || `${brand}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+              backfillStmts.push(
+                db
+                  .prepare(
+                    `INSERT OR IGNORE INTO checkin_events (
+                      id, session_id, brand, service_date, room_number, guest_name, table_number,
+                      adults, children, actual_guests, extra_guests, entitlement_exceeded, guest_type,
+                      meal_plan, products, breakfast_status, status_override, checked_out, checked_out_at,
+                      paid, paid_at, device_id, timestamp, updated_at, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BACKFILL', ?, ?, ?)`
+                  )
+                  .bind(
+                    id,
+                    sessionId,
+                    brand,
+                    serviceDate,
+                    c.roomNumber || c.displayLocation || "",
+                    c.guestName || "Guest",
+                    c.tableNumber || "",
+                    Number(c.adults) || 0,
+                    Number(c.children) || 0,
+                    Number(c.actualGuests) || (Number(c.adults) || 0) + (Number(c.children) || 0) || 1,
+                    Number(c.extraGuests) || 0,
+                    c.entitlementExceeded ? 1 : 0,
+                    c.guestType || "Hotel",
+                    c.mealPlan || "",
+                    c.products || "",
+                    c.breakfastStatus || "included",
+                    c.statusOverride ? 1 : 0,
+                    c.checkedOut ? 1 : 0,
+                    c.checkedOutAt || null,
+                    c.paid ? 1 : 0,
+                    c.paidAt || null,
+                    c.timestamp || nowIso,
+                    nowIso,
+                    nowIso
+                  )
+              );
+            }
+
+            if (backfillStmts.length > 0) {
+              await db.batch(backfillStmts);
+            }
+          }
+        }
+      }
+    } catch (backfillErr) {
+      console.warn("Auto-backfill notice:", backfillErr);
+    }
 
     // 1. Fetch checkin events
     let checkinSql = "SELECT * FROM checkin_events WHERE brand = ? AND service_date = ?";
@@ -89,7 +160,7 @@ export async function onRequestGet({ request, env }) {
       success: true,
       brand,
       serviceDate,
-      serverTime: new Date().toISOString(),
+      serverTime: nowIso,
       checkins: checkins || [],
       payments: payments || [],
       occupiedTables,
@@ -123,15 +194,16 @@ export async function onRequestPost({ request, env }) {
     }
 
     const sessionId = `${brand}_${serviceDate}`;
+    const nowIso = new Date().toISOString();
 
     // Ensure session exists
     await db
       .prepare(
         `INSERT INTO daily_sessions (id, brand, service_date, opened_by, updated_at)
-         VALUES (?, ?, ?, 'HOST', datetime('now'))
-         ON CONFLICT(brand, service_date) DO UPDATE SET updated_at = datetime('now')`
+         VALUES (?, ?, ?, 'HOST', ?)
+         ON CONFLICT(brand, service_date) DO UPDATE SET updated_at = ?`
       )
-      .bind(sessionId, brand, serviceDate)
+      .bind(sessionId, brand, serviceDate, nowIso, nowIso)
       .run();
 
     const statements = [];
@@ -149,17 +221,19 @@ export async function onRequestPost({ request, env }) {
                 id, session_id, brand, service_date, room_number, guest_name, table_number,
                 adults, children, actual_guests, extra_guests, entitlement_exceeded, guest_type,
                 meal_plan, products, breakfast_status, status_override, checked_out, checked_out_at,
-                paid, paid_at, device_id, timestamp, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                paid, paid_at, device_id, timestamp, updated_at, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(id) DO UPDATE SET
                 room_number = excluded.room_number,
                 table_number = excluded.table_number,
                 actual_guests = excluded.actual_guests,
+                extra_guests = excluded.extra_guests,
+                entitlement_exceeded = excluded.entitlement_exceeded,
                 checked_out = excluded.checked_out,
                 checked_out_at = excluded.checked_out_at,
                 paid = excluded.paid,
                 paid_at = excluded.paid_at,
-                updated_at = datetime('now')`
+                updated_at = excluded.updated_at`
             )
             .bind(
               id,
@@ -184,7 +258,9 @@ export async function onRequestPost({ request, env }) {
               data.paid ? 1 : 0,
               data.paidAt || null,
               deviceId,
-              data.timestamp || new Date().toISOString()
+              data.timestamp || nowIso,
+              nowIso,
+              nowIso
             )
         );
 
@@ -195,13 +271,13 @@ export async function onRequestPost({ request, env }) {
               .prepare(
                 `INSERT INTO payment_events (
                   id, checkin_id, session_id, brand, service_date, room_number, guest_name,
-                  table_number, guest_type, reason, extra_guests, amount_aed, paid, paid_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                  table_number, guest_type, reason, extra_guests, amount_aed, paid, paid_at, updated_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   table_number = excluded.table_number,
                   paid = excluded.paid,
                   paid_at = excluded.paid_at,
-                  updated_at = datetime('now')`
+                  updated_at = excluded.updated_at`
               )
               .bind(
                 id,
@@ -217,7 +293,9 @@ export async function onRequestPost({ request, env }) {
                 Number(data.extraGuests) || 0,
                 Number(data.amountAed) || 0,
                 data.paid ? 1 : 0,
-                data.paidAt || null
+                data.paidAt || null,
+                nowIso,
+                nowIso
               )
           );
         }
@@ -230,26 +308,26 @@ export async function onRequestPost({ request, env }) {
                 `UPDATE checkin_events
                  SET checked_out = 1,
                      checked_out_at = ?,
-                     updated_at = datetime('now')
+                     updated_at = ?
                  WHERE id = ?`
               )
-              .bind(data.checkedOutAt || new Date().toISOString(), id)
+              .bind(data.checkedOutAt || nowIso, nowIso, id)
           );
         }
       } else if (type === "PAYMENT_PAID") {
         const id = data.id;
         if (id) {
-          const paidAt = data.paidAt || new Date().toISOString();
+          const paidAt = data.paidAt || nowIso;
           statements.push(
             db
               .prepare(
                 `UPDATE payment_events
                  SET paid = 1,
                      paid_at = ?,
-                     updated_at = datetime('now')
+                     updated_at = ?
                  WHERE id = ?`
               )
-              .bind(paidAt, id)
+              .bind(paidAt, nowIso, id)
           );
           statements.push(
             db
@@ -257,10 +335,10 @@ export async function onRequestPost({ request, env }) {
                 `UPDATE checkin_events
                  SET paid = 1,
                      paid_at = ?,
-                     updated_at = datetime('now')
+                     updated_at = ?
                  WHERE id = ?`
               )
-              .bind(paidAt, id)
+              .bind(paidAt, nowIso, id)
           );
         }
       } else if (type === "TABLE_CHANGE") {
@@ -272,20 +350,20 @@ export async function onRequestPost({ request, env }) {
               .prepare(
                 `UPDATE checkin_events
                  SET table_number = ?,
-                     updated_at = datetime('now')
+                     updated_at = ?
                  WHERE id = ?`
               )
-              .bind(newTable, id)
+              .bind(newTable, nowIso, id)
           );
           statements.push(
             db
               .prepare(
                 `UPDATE payment_events
                  SET table_number = ?,
-                     updated_at = datetime('now')
+                     updated_at = ?
                  WHERE id = ?`
               )
-              .bind(newTable, id)
+              .bind(newTable, nowIso, id)
           );
         }
       }
@@ -350,7 +428,7 @@ export async function onRequestPost({ request, env }) {
           paidAt: p.paid_at,
           timestamp: p.created_at
         })),
-        savedAt: new Date().toISOString()
+        savedAt: nowIso
       });
 
       const reportId = `${serviceDate}_${brand}`;
@@ -358,15 +436,15 @@ export async function onRequestPost({ request, env }) {
         .prepare(
           `INSERT INTO daily_reports (
             id, service_date, brand, total_checkins, total_guests, total_payments, total_amount_aed, report_data, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'))
+          ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
           ON CONFLICT(service_date, brand) DO UPDATE SET
             total_checkins = excluded.total_checkins,
             total_guests = excluded.total_guests,
             total_payments = excluded.total_payments,
             report_data = excluded.report_data,
-            updated_at = datetime('now')`
+            updated_at = excluded.updated_at`
         )
-        .bind(reportId, serviceDate, brand, totalCheckins, totalGuests, totalPayments, reportDataString)
+        .bind(reportId, serviceDate, brand, totalCheckins, totalGuests, totalPayments, reportDataString, nowIso)
         .run();
     } catch (legacyErr) {
       console.warn("Legacy report sync update notice:", legacyErr);
@@ -375,7 +453,7 @@ export async function onRequestPost({ request, env }) {
     return jsonResponse({
       success: true,
       processedMutations: mutations.length,
-      serverTime: new Date().toISOString()
+      serverTime: nowIso
     });
   } catch (error) {
     return jsonResponse({ error: error.message || "Sync POST failed" }, 500);
