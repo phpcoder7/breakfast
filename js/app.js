@@ -254,9 +254,10 @@ class BreakfastApp {
     this.ui.renderCheckIns(checkInsForTable);
     this.ui.renderPayments(paymentForTable);
     this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
-    const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
+    const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast;
     const manualReady = Boolean(this.selectedGuest?.statusOverride);
-    this.ui.setCheckInEnabled(filesReady || manualReady);
+    const guestReady = Boolean(this.selectedGuest);
+    this.ui.setCheckInEnabled((filesReady && guestReady) || manualReady);
     this.ui.setExportState(
       Boolean(this.state.checkIns.length),
       Boolean(this.state.paymentList.length)
@@ -284,11 +285,17 @@ class BreakfastApp {
       this.state.filesLoaded[type] = true;
       this.state.fileNames[type] = file.name;
 
+      this.state.guests = mergeGuestData(
+        this.state.rawData.mealPlan || [],
+        this.state.rawData.packageForecast || []
+      );
+
       if (this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast) {
-        this.state.guests = mergeGuestData(this.state.rawData.mealPlan, this.state.rawData.packageForecast);
-        this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service.`, "success");
+        this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service (Both files loaded).`, "success");
+      } else if (this.state.filesLoaded.mealPlan) {
+        this.ui.renderMessage(`Loaded ${this.state.guests.length} guests from Meal Plan. Ready for check-in (Package Forecast is optional).`, "success");
       } else {
-        this.ui.renderMessage(`${type === "mealPlan" ? "Meal Plan" : "Package Forecast"} loaded. Please load the second XML report.`, "info");
+        this.ui.renderMessage(`Loaded ${this.state.guests.length} guests from Package Forecast. Ready for check-in (Meal Plan is optional).`, "success");
       }
 
       this.persistState();
@@ -308,7 +315,7 @@ class BreakfastApp {
 
   handleSearch(query) {
     if (!this.state.guests.length) {
-      this.ui.renderMessage("Please load both XML reports before checking in guests.", "warning");
+      this.ui.renderMessage("Please load an XML report (Meal Plan or Package Forecast) before searching.", "warning");
       return;
     }
 
@@ -925,7 +932,7 @@ class BreakfastApp {
   async handleNewDay() {
     const confirmed = await this.ui.promptConfirm({
       title: "Start New Day",
-      message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload both XML files.",
+      message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload XML files.",
       confirmLabel: "Download & New Day",
       danger: true
     });
@@ -988,7 +995,7 @@ class BreakfastApp {
 
     this.persistState();
     this.refreshUi();
-    this.ui.renderMessage("Reports downloaded. New day started. Please load both XML reports.", "success");
+    this.ui.renderMessage("Reports downloaded. New day started. Please load XML reports (Meal Plan or Package Forecast).", "success");
   }
 
   handleExportToday() {

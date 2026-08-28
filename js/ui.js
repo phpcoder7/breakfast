@@ -104,7 +104,7 @@ function guestPanelMarkup(guest) {
           <i class="fa-solid fa-mug-saucer text-2xl"></i>
         </div>
         <p class="max-w-xs text-sm font-medium leading-relaxed text-slate-400">
-          Load both XML files and search for a room to begin breakfast check-in.
+          Load XML files (Meal Plan or Package Forecast) and search for a room to begin breakfast check-in.
         </p>
       </div>
     `;
@@ -648,9 +648,9 @@ export class BreakfastUI {
   }
 
   setCheckInEnabled(enabled) {
-    this.elements.searchInput.disabled = !enabled;
-    this.elements.tableNumberInput.disabled = !enabled;
-    this.elements.actualGuestsInput.disabled = !enabled;
+    this.elements.searchInput.disabled = false;
+    this.elements.tableNumberInput.disabled = false;
+    this.elements.actualGuestsInput.disabled = false;
     this.elements.checkInButton.disabled = !enabled;
   }
 
@@ -808,8 +808,10 @@ export class BreakfastUI {
                     type="${escapeHtml(field.type || "text")}"
                     name="${escapeHtml(field.name)}"
                     value="${escapeHtml(field.value || "")}"
+                    ${field.type === "number" ? 'inputmode="numeric" pattern="[0-9]*"' : ""}
                     ${field.min !== undefined ? `min="${escapeHtml(String(field.min))}"` : ""}
                     ${field.required ? "required" : ""}
+                    autocomplete="off"
                   />
                 </label>
               `;

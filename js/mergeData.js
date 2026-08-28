@@ -19,10 +19,12 @@ function isNoBreakfastCode(code) {
   return Boolean(NO_BREAKFAST_CODES[normalizeCode(code)]);
 }
 
-function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(row.confirmationNumber) || `room:${normalizeRoom(row.roomNumber)}`) {
+function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(row?.confirmationNumber) || `room:${normalizeRoom(row?.roomNumber)}`) {
   const grouped = new Map();
+  const safeRows = Array.isArray(forecastRows) ? forecastRows : [];
 
-  forecastRows.forEach((row) => {
+  safeRows.forEach((row) => {
+    if (!row) return;
     const key = keyForRow(row);
     if (!key) {
       return;
@@ -31,21 +33,26 @@ function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(
     const current = grouped.get(key) || {
       confirmationNumber: normalizeText(row.confirmationNumber),
       roomNumber: normalizeRoom(row.roomNumber),
-      firstName: row.firstName,
-      lastName: row.lastName,
-      adults: row.adults,
-      children: row.children,
-      reservationStatus: row.reservationStatus,
-      arrival: row.arrival,
-      departure: row.departure,
-      rateCode: row.rateCode,
+      firstName: row.firstName || "",
+      lastName: row.lastName || "",
+      adults: row.adults ?? 0,
+      children: row.children ?? 0,
+      reservationStatus: row.reservationStatus || "CHECKED IN",
+      arrival: row.arrival || "",
+      departure: row.departure || "",
+      rateCode: row.rateCode || "",
       products: [],
       productDescriptions: [],
       breakfastQuantity: 0,
       packageQuantity: 0
     };
 
-    current.products.push(...(row.products || []), row.productGroupCode);
+    if (row.products && Array.isArray(row.products)) {
+      current.products.push(...row.products);
+    }
+    if (row.productGroupCode) {
+      current.products.push(row.productGroupCode);
+    }
     if (row.productDescription) {
       current.productDescriptions.push(row.productDescription);
     }
@@ -62,9 +69,10 @@ function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(
   return grouped;
 }
 
-function breakfastDecision(mealPlan, products, breakfastQuantity, adults, children) {
+function breakfastDecision(mealPlan, products = [], breakfastQuantity, adults, children) {
   const mealCode = normalizeCode(mealPlan);
-  const normalizedProducts = uniqueList(products.map((code) => normalizeCode(code)));
+  const safeProducts = Array.isArray(products) ? products : [];
+  const normalizedProducts = uniqueList(safeProducts.map((code) => normalizeCode(code)));
 
   if (isNoBreakfastCode(mealCode)) {
     return {
@@ -145,20 +153,23 @@ function guestFromForecast(packageData) {
   };
 }
 
-export function mergeGuestData(mealPlanRows, packageForecastRows) {
+export function mergeGuestData(mealPlanRows = [], packageForecastRows = []) {
+  const safeMealRows = Array.isArray(mealPlanRows) ? mealPlanRows : [];
+  const safeForecastRows = Array.isArray(packageForecastRows) ? packageForecastRows : [];
+
   const forecastByConfirmation = aggregateForecastRows(
-    packageForecastRows.filter((row) => normalizeText(row.confirmationNumber)),
+    safeForecastRows.filter((row) => normalizeText(row?.confirmationNumber)),
     (row) => normalizeText(row.confirmationNumber)
   );
   const forecastByRoom = aggregateForecastRows(
-    packageForecastRows.filter((row) => normalizeRoom(row.roomNumber)),
+    safeForecastRows.filter((row) => normalizeRoom(row?.roomNumber)),
     (row) => normalizeRoom(row.roomNumber)
   );
 
   const matchedConfirmations = new Set();
   const matchedRooms = new Set();
 
-  const guestsFromMealPlan = mealPlanRows.map((mealRow) => {
+  const guestsFromMealPlan = safeMealRows.map((mealRow) => {
     const packageData = resolvePackageMatch(mealRow, forecastByConfirmation, forecastByRoom);
     if (packageData) {
       const confirmation = normalizeText(packageData.confirmationNumber);

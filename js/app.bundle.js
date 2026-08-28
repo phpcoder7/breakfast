@@ -459,9 +459,11 @@
   function isNoBreakfastCode(code) {
     return Boolean(NO_BREAKFAST_CODES[normalizeCode(code)]);
   }
-  function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(row.confirmationNumber) || `room:${normalizeRoom(row.roomNumber)}`) {
+  function aggregateForecastRows(forecastRows, keyForRow = (row) => normalizeText(row?.confirmationNumber) || `room:${normalizeRoom(row?.roomNumber)}`) {
     const grouped = /* @__PURE__ */ new Map();
-    forecastRows.forEach((row) => {
+    const safeRows = Array.isArray(forecastRows) ? forecastRows : [];
+    safeRows.forEach((row) => {
+      if (!row) return;
       const key = keyForRow(row);
       if (!key) {
         return;
@@ -469,20 +471,25 @@
       const current = grouped.get(key) || {
         confirmationNumber: normalizeText(row.confirmationNumber),
         roomNumber: normalizeRoom(row.roomNumber),
-        firstName: row.firstName,
-        lastName: row.lastName,
-        adults: row.adults,
-        children: row.children,
-        reservationStatus: row.reservationStatus,
-        arrival: row.arrival,
-        departure: row.departure,
-        rateCode: row.rateCode,
+        firstName: row.firstName || "",
+        lastName: row.lastName || "",
+        adults: row.adults ?? 0,
+        children: row.children ?? 0,
+        reservationStatus: row.reservationStatus || "CHECKED IN",
+        arrival: row.arrival || "",
+        departure: row.departure || "",
+        rateCode: row.rateCode || "",
         products: [],
         productDescriptions: [],
         breakfastQuantity: 0,
         packageQuantity: 0
       };
-      current.products.push(...row.products || [], row.productGroupCode);
+      if (row.products && Array.isArray(row.products)) {
+        current.products.push(...row.products);
+      }
+      if (row.productGroupCode) {
+        current.products.push(row.productGroupCode);
+      }
       if (row.productDescription) {
         current.productDescriptions.push(row.productDescription);
       }
@@ -496,9 +503,10 @@
     });
     return grouped;
   }
-  function breakfastDecision(mealPlan, products, breakfastQuantity, adults, children) {
+  function breakfastDecision(mealPlan, products = [], breakfastQuantity, adults, children) {
     const mealCode = normalizeCode(mealPlan);
-    const normalizedProducts = uniqueList(products.map((code) => normalizeCode(code)));
+    const safeProducts = Array.isArray(products) ? products : [];
+    const normalizedProducts = uniqueList(safeProducts.map((code) => normalizeCode(code)));
     if (isNoBreakfastCode(mealCode)) {
       return {
         breakfastIncluded: false,
@@ -569,18 +577,20 @@
       guestType: GUEST_TYPES.HOTEL
     };
   }
-  function mergeGuestData(mealPlanRows, packageForecastRows) {
+  function mergeGuestData(mealPlanRows = [], packageForecastRows = []) {
+    const safeMealRows = Array.isArray(mealPlanRows) ? mealPlanRows : [];
+    const safeForecastRows = Array.isArray(packageForecastRows) ? packageForecastRows : [];
     const forecastByConfirmation = aggregateForecastRows(
-      packageForecastRows.filter((row) => normalizeText(row.confirmationNumber)),
+      safeForecastRows.filter((row) => normalizeText(row?.confirmationNumber)),
       (row) => normalizeText(row.confirmationNumber)
     );
     const forecastByRoom = aggregateForecastRows(
-      packageForecastRows.filter((row) => normalizeRoom(row.roomNumber)),
+      safeForecastRows.filter((row) => normalizeRoom(row?.roomNumber)),
       (row) => normalizeRoom(row.roomNumber)
     );
     const matchedConfirmations = /* @__PURE__ */ new Set();
     const matchedRooms = /* @__PURE__ */ new Set();
-    const guestsFromMealPlan = mealPlanRows.map((mealRow) => {
+    const guestsFromMealPlan = safeMealRows.map((mealRow) => {
       const packageData = resolvePackageMatch(mealRow, forecastByConfirmation, forecastByRoom);
       if (packageData) {
         const confirmation = normalizeText(packageData.confirmationNumber);
@@ -713,7 +723,9 @@
     if (!normalizedQuery) {
       return [];
     }
-    return guests.filter((guest) => {
+    const safeGuests = Array.isArray(guests) ? guests : [];
+    return safeGuests.filter((guest) => {
+      if (!guest) return false;
       const room = normalizeSearchText(guest.roomNumber);
       const firstName = normalizeSearchText(guest.firstName);
       const lastName = normalizeSearchText(guest.lastName);
@@ -724,8 +736,9 @@
   }
   function exactRoomMatch(guests, query) {
     const variants = roomSearchVariants(query);
-    return guests.find(
-      (guest) => variants.includes(guest.roomNumber.replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber)
+    const safeGuests = Array.isArray(guests) ? guests : [];
+    return safeGuests.find(
+      (guest) => guest && (variants.includes(String(guest.roomNumber || "").replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber))
     );
   }
   function highlightMatch(text, query) {
@@ -841,7 +854,7 @@
           <i class="fa-solid fa-mug-saucer text-2xl"></i>
         </div>
         <p class="max-w-xs text-sm font-medium leading-relaxed text-slate-400">
-          Load both XML files and search for a room to begin breakfast check-in.
+          Load XML files (Meal Plan or Package Forecast) and search for a room to begin breakfast check-in.
         </p>
       </div>
     `;
@@ -1296,9 +1309,9 @@
       }
     }
     setCheckInEnabled(enabled) {
-      this.elements.searchInput.disabled = !enabled;
-      this.elements.tableNumberInput.disabled = !enabled;
-      this.elements.actualGuestsInput.disabled = !enabled;
+      this.elements.searchInput.disabled = false;
+      this.elements.tableNumberInput.disabled = false;
+      this.elements.actualGuestsInput.disabled = false;
       this.elements.checkInButton.disabled = !enabled;
     }
     setExportState(hasCheckIns, hasPayments) {
@@ -1436,8 +1449,10 @@
                     type="${escapeHtml(field.type || "text")}"
                     name="${escapeHtml(field.name)}"
                     value="${escapeHtml(field.value || "")}"
+                    ${field.type === "number" ? 'inputmode="numeric" pattern="[0-9]*"' : ""}
                     ${field.min !== void 0 ? `min="${escapeHtml(String(field.min))}"` : ""}
                     ${field.required ? "required" : ""}
+                    autocomplete="off"
                   />
                 </label>
               `;
@@ -1887,9 +1902,10 @@
       this.ui.renderCheckIns(checkInsForTable);
       this.ui.renderPayments(paymentForTable);
       this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
-      const filesReady = this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast;
+      const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast;
       const manualReady = Boolean(this.selectedGuest?.statusOverride);
-      this.ui.setCheckInEnabled(filesReady || manualReady);
+      const guestReady = Boolean(this.selectedGuest);
+      this.ui.setCheckInEnabled(filesReady && guestReady || manualReady);
       this.ui.setExportState(
         Boolean(this.state.checkIns.length),
         Boolean(this.state.paymentList.length)
@@ -1912,11 +1928,16 @@
         }
         this.state.filesLoaded[type] = true;
         this.state.fileNames[type] = file.name;
+        this.state.guests = mergeGuestData(
+          this.state.rawData.mealPlan || [],
+          this.state.rawData.packageForecast || []
+        );
         if (this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast) {
-          this.state.guests = mergeGuestData(this.state.rawData.mealPlan, this.state.rawData.packageForecast);
-          this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service.`, "success");
+          this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service (Both files loaded).`, "success");
+        } else if (this.state.filesLoaded.mealPlan) {
+          this.ui.renderMessage(`Loaded ${this.state.guests.length} guests from Meal Plan. Ready for check-in (Package Forecast is optional).`, "success");
         } else {
-          this.ui.renderMessage(`${type === "mealPlan" ? "Meal Plan" : "Package Forecast"} loaded. Please load the second XML report.`, "info");
+          this.ui.renderMessage(`Loaded ${this.state.guests.length} guests from Package Forecast. Ready for check-in (Meal Plan is optional).`, "success");
         }
         this.persistState();
         this.refreshUi();
@@ -1934,7 +1955,7 @@
     }
     handleSearch(query) {
       if (!this.state.guests.length) {
-        this.ui.renderMessage("Please load both XML reports before checking in guests.", "warning");
+        this.ui.renderMessage("Please load an XML report (Meal Plan or Package Forecast) before searching.", "warning");
         return;
       }
       if (!query.trim()) {
@@ -2451,7 +2472,7 @@
     async handleNewDay() {
       const confirmed = await this.ui.promptConfirm({
         title: "Start New Day",
-        message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload both XML files.",
+        message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload XML files.",
         confirmLabel: "Download & New Day",
         danger: true
       });
@@ -2507,7 +2528,7 @@
       }
       this.persistState();
       this.refreshUi();
-      this.ui.renderMessage("Reports downloaded. New day started. Please load both XML reports.", "success");
+      this.ui.renderMessage("Reports downloaded. New day started. Please load XML reports (Meal Plan or Package Forecast).", "success");
     }
     handleExportToday() {
       try {

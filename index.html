@@ -206,7 +206,8 @@
               inputmode="search"
               placeholder="Room / Name / Confirmation"
               autocomplete="off"
-              disabled
+              autocorrect="off"
+              spellcheck="false"
             />
             <div id="searchResults" class="mt-2 max-h-28 space-y-1.5 overflow-y-auto sm:mt-3 sm:max-h-36 sm:space-y-2"></div>
             <div class="mt-2 sm:mt-3">
@@ -288,7 +289,7 @@
                       type="text"
                       inputmode="numeric"
                       placeholder="Table #"
-                      disabled
+                      autocomplete="off"
                       class="checkin-input h-12 w-full rounded-2xl border-0 bg-white px-3 text-center text-2xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25 sm:h-14 sm:px-4 sm:text-3xl"
                     />
                   </label>
@@ -297,9 +298,11 @@
                     <input
                       id="actualGuests"
                       type="number"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
                       min="0"
                       placeholder="Optional"
-                      disabled
+                      autocomplete="off"
                       class="checkin-input h-12 w-full rounded-2xl border-0 bg-white px-3 text-center text-2xl font-extrabold text-slate-900 outline-none transition focus:ring-2 focus:ring-primary/25 sm:h-14 sm:px-4 sm:text-3xl"
                     />
                   </label>

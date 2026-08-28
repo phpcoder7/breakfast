@@ -19,8 +19,11 @@ export function searchGuests(guests, query, limit = 8) {
     return [];
   }
 
-  return guests
+  const safeGuests = Array.isArray(guests) ? guests : [];
+
+  return safeGuests
     .filter((guest) => {
+      if (!guest) return false;
       const room = normalizeSearchText(guest.roomNumber);
       const firstName = normalizeSearchText(guest.firstName);
       const lastName = normalizeSearchText(guest.lastName);
@@ -40,9 +43,10 @@ export function searchGuests(guests, query, limit = 8) {
 
 export function exactRoomMatch(guests, query) {
   const variants = roomSearchVariants(query);
-  return guests.find(
+  const safeGuests = Array.isArray(guests) ? guests : [];
+  return safeGuests.find(
     (guest) =>
-      variants.includes(guest.roomNumber.replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber)
+      guest && (variants.includes(String(guest.roomNumber || "").replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber))
   );
 }
 
