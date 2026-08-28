@@ -1,0 +1,21 @@
+---
+description: Build commands, bundling, and automated testing verification standards before any commit
+alwaysApply: true
+---
+
+# Build & Testing Standards
+
+## 1. Production Bundling with esbuild
+- Any changes to JavaScript files (`js/**/*.js`) **MUST** be compiled to `js/app.bundle.js` with sourcemaps before deployment:
+  ```bash
+  npx esbuild js/app.js --bundle --format=iife --loader:.txt=text --minify --sourcemap --outfile=js/app.bundle.js
+  ```
+- Keep the bundled output lightweight (< 75 KB) and independent of heavy runtime frameworks.
+
+## 2. Automated Test Verification
+- Before any commit or release, the automated test suite **MUST** be executed and pass 100%:
+  ```bash
+  npx esbuild tests/run-tests.js --bundle --platform=node --loader:.txt=text --outfile=tests/bundle-test.cjs; node tests/bundle-test.cjs
+  ```
+- Any new features (e.g. new check-in rules, report parsing adjustments) must include corresponding unit/integration tests in `tests/run-tests.js`.
+- Clean up any temporary test output files (like `tests/bundle-test.cjs`) before staging git commits.

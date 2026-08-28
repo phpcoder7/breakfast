@@ -1,0 +1,39 @@
+---
+description: Data storage resilience, localStorage quota handling, in-memory indexing, and New Day cleanup protocol
+globs: js/**/*.js
+alwaysApply: false
+---
+
+# Data Persistence & Resilience Invariants
+
+Rules for crash recovery, in-memory search indexing, and total memory hygiene in hotel reception environments.
+
+## 1. Defensive Storage & JSON Parsing
+- All `localStorage` read, write, and clear operations in `js/utils.js` **MUST** be wrapped in `try...catch` blocks to protect against:
+  - Storage quota exceeded errors (`QuotaExceededError`).
+  - Private browsing/incognito mode restrictions.
+  - Corrupted string payloads.
+- JSON parsing of stored or incoming data **MUST** use `safeJsonParse(raw, fallback)` rather than raw `JSON.parse()`.
+
+## 2. In-Memory Search Index (O(1))
+- Guest lookup speed must remain instant (< 1ms) even with 2,000+ guest records.
+- `globalSearchIndex` (instance of `GuestSearchIndex`) **MUST**:
+  - Maintain `exactRoomMap`, `confirmationMap`, and `tokenIndex`.
+  - Be updated whenever guest data is loaded (`handleFileUpload`), manually created (`handleManualGuest`), or cleared.
+  - Provide fallback token search for names and room numbers.
+
+## 3. New Day Cleanup Protocol
+- Triggering "New Day" (`handleNewDay`) **MUST** execute a complete wipe of both storage and memory:
+  ```javascript
+  clearStoredState();           // Wipes localStorage
+  globalSearchIndex.clear();    // Empties in-memory search maps
+  this.state.guests = [];
+  this.state.checkIns = [];
+  this.state.paymentList = [];
+  this.state.rawData = { mealPlan: null, packageForecast: null };
+  this.state.filesLoaded = { mealPlan: false, packageForecast: false };
+  this.selectedGuest = null;
+  this.searchState.results = [];
+  ```
+- Reset check-in & payment search filter inputs (`checkinTableSearchInput`, `checkinGuestSearchInput`, `paymentSearchInput`).
+- Reset UI file badges to empty state.

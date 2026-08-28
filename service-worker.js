@@ -1,4 +1,4 @@
-const CACHE_NAME = "breakfast-checkin-v17";
+const CACHE_NAME = "breakfast-checkin-v18";
 
 const APP_ASSETS = [
   "./",
@@ -42,7 +42,7 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
+  if (event.request.method !== "GET" || event.request.url.includes("/api/")) {
     return;
   }
 

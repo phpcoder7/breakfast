@@ -1,0 +1,38 @@
+---
+description: Inviolable business rules for hotel breakfast operations and guest check-in
+alwaysApply: true
+---
+
+# Core Business & Domain Invariants
+
+These rules represent foundational hotel operational constraints and MUST NOT be bypassed or broken during any code refactoring or feature additions.
+
+## 1. Single & Partial Report Tolerance
+- The system **MUST** remain fully operational when:
+  - Only **Meal Plan** XML is loaded.
+  - Only **Package Forecast** XML is loaded.
+  - Both XML reports are loaded.
+  - No reports are loaded, but manual FO corrections / Walk-In / Apartment guests are registered.
+- Never make loading *both* reports a blocking requirement for search or check-in.
+- In `mergeGuestData`, missing properties or single-report datasets must default gracefully without null-pointer exceptions.
+
+## 2. Guest Selection & Check-In Button Sync
+- Whenever a guest is selected (`selectGuest`, `showGuestFromCard`, `handleManualGuest`), `this.refreshUi()` **MUST** be invoked immediately.
+- The check-in button enabled state condition must strictly be:
+  ```javascript
+  const filesReady = this.state.filesLoaded.mealPlan || 
+                     this.state.filesLoaded.packageForecast || 
+                     (this.state.guests && this.state.guests.length > 0);
+  const manualReady = Boolean(this.selectedGuest?.statusOverride);
+  const guestReady = Boolean(this.selectedGuest);
+  this.ui.setCheckInEnabled((filesReady && guestReady) || manualReady);
+  ```
+- Selecting a guest must never leave the check-in button in a disabled state if valid guest data exists.
+
+## 3. Entitlement & Late Arrivals Handling
+- **Entitlement Check**: If `actualGuests > breakfastQuantity` for included breakfast guests, prompt confirmation for billing extra guests before creating check-in.
+- **Duplicate Check-In / Late Arrivals**: If a room is already checked in and checked in again, route directly to `handleLateArrivals` instead of throwing an error or silently ignoring it.
+- **Table Availability & Sharing**: Active table collisions must offer an explicit choice: "Sit together" or "Check Out & Continue".
+
+## 4. Brand Specifics
+- Brand table configurations (`tables-kca.txt`, `tables-ktb.txt`) must strictly support their respective physical tables (e.g., KCA tables 1 to 90).

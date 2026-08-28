@@ -14,6 +14,7 @@ import {
   updateCheckInTableNumber
 } from "./checkin.js";
 import { exportAccountingReport, exportTodayReport } from "./export.js";
+import { fetchFullReport, fetchReportsFromCloud, saveDailyReportToCloud } from "./cloudSync.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
 import { exactRoomMatch, globalSearchIndex, searchGuests } from "./search.js";
@@ -136,6 +137,16 @@ class BreakfastApp {
     elements.newDayButton.addEventListener("click", () => this.handleNewDay());
     elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
     elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
+
+    // Past Reports & Cloud Archive Dashboard Events
+    elements.reportsDashboardButton?.addEventListener("click", () => this.handleOpenReportsDashboard());
+    elements.mobileReportsDashboardButton?.addEventListener("click", () => this.handleOpenReportsDashboard());
+    elements.reportsDashboardCloseButton?.addEventListener("click", () => this.ui.closeReportsDashboard());
+    elements.reportRefreshButton?.addEventListener("click", () => this.loadReportsDashboardData());
+    elements.reportBrandFilter?.addEventListener("change", () => this.loadReportsDashboardData());
+    elements.reportDateFilter?.addEventListener("change", () => this.loadReportsDashboardData());
+    elements.reportSearchInput?.addEventListener("input", () => this.debounceLoadReports());
+    elements.syncCurrentDayCloudButton?.addEventListener("click", () => this.handleManualCloudSync());
     elements.paymentTableBody?.addEventListener("click", (event) => {
       const editTableButton = event.target.closest("[data-edit-table-id]");
       if (editTableButton) {
@@ -923,6 +934,7 @@ class BreakfastApp {
     this.state.checkIns.unshift(record);
     this.state.paymentList = syncPaymentList(this.state.checkIns);
     this.persistState();
+    this.syncCurrentStateToCloud();
     this.ui.renderMessage(message, tone);
     this.ui.elements.tableNumberInput.value = "";
     this.ui.elements.actualGuestsInput.value = "";
@@ -938,7 +950,7 @@ class BreakfastApp {
   async handleNewDay() {
     const confirmed = await this.ui.promptConfirm({
       title: "Start New Day",
-      message: "This will download today's Breakfast Report and Accounting Report, then clear check-ins, payments, and unload XML files.",
+      message: "This will download today's Breakfast Report and Accounting Report, backup to Cloudflare D1, then clear check-ins, payments, and unload XML files.",
       confirmLabel: "Download & New Day",
       danger: true
     });
@@ -950,6 +962,7 @@ class BreakfastApp {
     try {
       exportTodayReport(this.state.checkIns);
       exportAccountingReport(this.state.paymentList);
+      await this.syncCurrentStateToCloud();
     } catch (error) {
       this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
       return;
@@ -1032,6 +1045,155 @@ class BreakfastApp {
     } catch (error) {
       this.ui.renderMessage(error.message, "error");
     }
+  }
+
+  async syncCurrentStateToCloud(showToast = false) {
+    const brand = getCurrentUser();
+    const serviceDate = this.state.serviceDate || todayKey();
+    if (!brand) return { success: false, error: "Not logged in" };
+
+    const result = await saveDailyReportToCloud(brand, serviceDate, this.state.checkIns, this.state.paymentList);
+    if (showToast) {
+      if (result.success) {
+        this.ui.renderMessage(`Cloud backup saved for ${brand} (${serviceDate}). 20-day retention synced.`, "success");
+      } else {
+        this.ui.renderMessage(`Cloud backup notice: ${result.error || "Offline mode active"}`, "info");
+      }
+    }
+    return result;
+  }
+
+  async handleManualCloudSync() {
+    this.ui.renderMessage("Syncing current check-ins to Cloudflare D1...", "info");
+    await this.syncCurrentStateToCloud(true);
+  }
+
+  handleOpenReportsDashboard() {
+    this.ui.openReportsDashboard();
+    if (this.ui.elements.reportBrandFilter && !this.ui.elements.reportBrandFilter.dataset.touched) {
+      const currentUser = getCurrentUser();
+      if (currentUser === "KCA" || currentUser === "KTB") {
+        this.ui.elements.reportBrandFilter.value = currentUser;
+      }
+    }
+    this.loadReportsDashboardData();
+  }
+
+  debounceLoadReports() {
+    if (this._loadReportsTimeout) {
+      clearTimeout(this._loadReportsTimeout);
+    }
+    this._loadReportsTimeout = setTimeout(() => {
+      this.loadReportsDashboardData();
+    }, 300);
+  }
+
+  async loadReportsDashboardData() {
+    this.ui.renderReportsLoading();
+
+    const brand = this.ui.elements.reportBrandFilter?.value || "";
+    const date = this.ui.elements.reportDateFilter?.value || "";
+    const query = this.ui.elements.reportSearchInput?.value?.trim() || "";
+
+    const result = await fetchReportsFromCloud({ brand, date, query, full: false });
+
+    if (!result.success) {
+      this.ui.renderReportsError(result.error || "Unable to reach Cloudflare D1 database. Check network connection.");
+      return;
+    }
+
+    this.ui.renderReportsList(result.reports, {
+      onExportReport: (d, b) => this.handleExportPastReport(d, b),
+      onExportAccounting: (d, b) => this.handleExportPastAccounting(d, b),
+      onInspectReport: (d, b, p) => this.handleInspectPastReport(d, b, p)
+    });
+  }
+
+  async handleExportPastReport(serviceDate, brand) {
+    this.ui.renderMessage(`Fetching report for ${brand} on ${serviceDate}...`, "info");
+    const reportData = await fetchFullReport(serviceDate, brand);
+    if (!reportData || !Array.isArray(reportData.checkIns)) {
+      this.ui.renderMessage("Could not retrieve report data from cloud.", "error");
+      return;
+    }
+
+    try {
+      const filename = `breakfast-report-${serviceDate}-${brand}.xlsx`;
+      exportTodayReport(reportData.checkIns, filename);
+      this.ui.renderMessage(`Downloaded ${filename} successfully.`, "success");
+    } catch (error) {
+      this.ui.renderMessage(`Export error: ${error.message}`, "error");
+    }
+  }
+
+  async handleExportPastAccounting(serviceDate, brand) {
+    this.ui.renderMessage(`Fetching accounting for ${brand} on ${serviceDate}...`, "info");
+    const reportData = await fetchFullReport(serviceDate, brand);
+    if (!reportData || !Array.isArray(reportData.paymentList)) {
+      this.ui.renderMessage("Could not retrieve accounting data from cloud.", "error");
+      return;
+    }
+
+    try {
+      const filename = `breakfast-accounting-${serviceDate}-${brand}.xlsx`;
+      exportAccountingReport(reportData.paymentList, filename);
+      this.ui.renderMessage(`Downloaded ${filename} successfully.`, "success");
+    } catch (error) {
+      this.ui.renderMessage(`Export error: ${error.message}`, "error");
+    }
+  }
+
+  async handleInspectPastReport(serviceDate, brand, panelElement) {
+    panelElement.innerHTML = `<div class="text-xs text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading check-ins...</div>`;
+    const reportData = await fetchFullReport(serviceDate, brand);
+    if (!reportData || !Array.isArray(reportData.checkIns) || reportData.checkIns.length === 0) {
+      panelElement.innerHTML = `<div class="text-xs text-slate-400 font-semibold">No check-in records available for this date.</div>`;
+      return;
+    }
+
+    const checkIns = reportData.checkIns;
+    const rowsHtml = checkIns
+      .slice(0, 50)
+      .map((c) => {
+        const room = escapeHtml(c.roomNumber || c.displayLocation || "-");
+        const name = escapeHtml(c.guestName || "-");
+        const table = escapeHtml(c.tableNumber || "-");
+        const guests = c.actualGuests || (Number(c.adults) || 0) + (Number(c.children) || 0);
+        return `
+          <tr class="border-b border-slate-100 text-[11px]">
+            <td class="py-1 px-2 font-bold text-slate-900">${room}</td>
+            <td class="py-1 px-2 text-slate-600">${name}</td>
+            <td class="py-1 px-2 font-bold text-slate-800">${table}</td>
+            <td class="py-1 px-2 text-slate-500">${guests}</td>
+            <td class="py-1 px-2">
+              <span class="inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ${c.breakfastStatus === "included" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}">
+                ${c.breakfastStatus === "included" ? "Included" : "Payment"}
+              </span>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    panelElement.innerHTML = `
+      <div class="max-h-56 overflow-y-auto">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200">
+              <th class="py-1 px-2">Room</th>
+              <th class="py-1 px-2">Guest</th>
+              <th class="py-1 px-2">Table</th>
+              <th class="py-1 px-2">Guests</th>
+              <th class="py-1 px-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        ${checkIns.length > 50 ? `<div class="text-[10px] text-slate-400 text-center mt-1">Showing first 50 of ${checkIns.length} records</div>` : ""}
+      </div>
+    `;
   }
 
   focusSearch() {

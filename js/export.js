@@ -16,36 +16,37 @@ function writeWorkbook(rows, fileName, sheetName) {
   XLSX.writeFile(workbook, fileName);
 }
 
-export function exportTodayReport(checkIns) {
+export function exportTodayReport(checkIns, customFilename = "") {
   const rows = checkIns.map((record) => ({
-    Time: record.timeLabel,
-    "Room Number": record.roomNumber,
-    "Guest Name": record.guestName,
-    Adults: record.adults,
-    Children: record.children,
-    Table: record.tableNumber,
-    "Meal Plan": record.mealPlan,
-    Package: record.products,
+    Time: record.timeLabel || (record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""),
+    "Room Number": record.roomNumber || record.displayLocation || "-",
+    "Guest Name": record.guestName || "-",
+    Adults: record.adults ?? 0,
+    Children: record.children ?? 0,
+    Table: record.tableNumber || "-",
+    "Meal Plan": record.mealPlan || "-",
+    Package: record.products || "-",
     "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
-    "Guest Type": record.guestType,
+    "Guest Type": record.guestType || "Hotel",
     "FO Override": record.statusOverride ? "Yes" : "No",
     "Checked Out": record.checkedOut ? "Yes" : "No",
     "Check Out Time": record.checkedOutAt ? formatTime(record.checkedOutAt) : ""
   }));
 
-  writeWorkbook(rows, `breakfast-report-${todayKey()}.xlsx`, "Breakfast Report");
+  const fileName = customFilename || `breakfast-report-${todayKey()}.xlsx`;
+  writeWorkbook(rows, fileName, "Breakfast Report");
 }
 
-export function exportAccountingReport(paymentList) {
+export function exportAccountingReport(paymentList, customFilename = "") {
   const rows = paymentList.map((record) => ({
     Time: record.timestamp
       ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
       : "",
-    "Room / Apartment": record.displayLocation,
-    Guest: record.guestName,
-    Table: record.tableNumber,
-    "Guest Type": record.guestType,
-    Reason: record.reason,
+    "Room / Apartment": record.displayLocation || "-",
+    Guest: record.guestName || "-",
+    Table: record.tableNumber || "-",
+    "Guest Type": record.guestType || "Hotel",
+    Reason: record.reason || "-",
     "Extra Guests": record.extraGuests || "",
     "Guests Charged": record.chargeableGuests ?? "",
     "Unit Price (AED)": record.unitPriceAed ?? "",
@@ -56,5 +57,6 @@ export function exportAccountingReport(paymentList) {
       : ""
   }));
 
-  writeWorkbook(rows, `breakfast-accounting-${todayKey()}.xlsx`, "Accounting");
+  const fileName = customFilename || `breakfast-accounting-${todayKey()}.xlsx`;
+  writeWorkbook(rows, fileName, "Accounting");
 }

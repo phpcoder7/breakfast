@@ -370,7 +370,21 @@ export class BreakfastUI {
       statCheckIns: document.querySelector("#statCheckIns"),
       statPayments: document.querySelector("#statPayments"),
       statIncluded: document.querySelector("#statIncluded"),
-      statPaymentRequired: document.querySelector("#statPaymentRequired")
+      statPaymentRequired: document.querySelector("#statPaymentRequired"),
+      reportsDashboardButton: document.querySelector("#reportsDashboardButton"),
+      mobileReportsDashboardButton: document.querySelector("#mobileReportsDashboardButton"),
+      reportsDashboardModal: document.querySelector("#reportsDashboardModal"),
+      reportsDashboardCloseButton: document.querySelector("#reportsDashboardCloseButton"),
+      reportSearchInput: document.querySelector("#reportSearchInput"),
+      reportBrandFilter: document.querySelector("#reportBrandFilter"),
+      reportDateFilter: document.querySelector("#reportDateFilter"),
+      reportRefreshButton: document.querySelector("#reportRefreshButton"),
+      reportsListContainer: document.querySelector("#reportsListContainer"),
+      syncCurrentDayCloudButton: document.querySelector("#syncCurrentDayCloudButton"),
+      kpiReportsCount: document.querySelector("#kpiReportsCount"),
+      kpiCheckinsCount: document.querySelector("#kpiCheckinsCount"),
+      kpiGuestsCount: document.querySelector("#kpiGuestsCount"),
+      kpiRevenueCount: document.querySelector("#kpiRevenueCount")
     };
 
     this.bindRecentSearchClicks();
@@ -850,6 +864,187 @@ export class BreakfastUI {
 
       const firstField = this.elements.modal.querySelector("input, select");
       firstField?.focus();
+    });
+  }
+
+  openReportsDashboard() {
+    if (this.elements.reportsDashboardModal) {
+      this.elements.reportsDashboardModal.hidden = false;
+      this.elements.reportsDashboardModal.setAttribute("aria-hidden", "false");
+    }
+  }
+
+  closeReportsDashboard() {
+    if (this.elements.reportsDashboardModal) {
+      this.elements.reportsDashboardModal.hidden = true;
+      this.elements.reportsDashboardModal.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  renderReportsLoading() {
+    if (!this.elements.reportsListContainer) return;
+    this.elements.reportsListContainer.innerHTML = `
+      <div class="flex h-48 flex-col items-center justify-center text-slate-400">
+        <i class="fa-solid fa-spinner fa-spin text-3xl text-primary"></i>
+        <span class="mt-3 text-sm font-bold">Fetching reports from Cloudflare D1...</span>
+      </div>
+    `;
+  }
+
+  renderReportsError(message) {
+    if (!this.elements.reportsListContainer) return;
+    this.elements.reportsListContainer.innerHTML = `
+      <div class="flex h-48 flex-col items-center justify-center text-center p-4">
+        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-danger mb-2">
+          <i class="fa-solid fa-circle-exclamation text-2xl"></i>
+        </div>
+        <div class="text-sm font-bold text-slate-800">Unable to load cloud reports</div>
+        <div class="mt-1 text-xs text-slate-500 max-w-sm">${escapeHtml(message)}</div>
+      </div>
+    `;
+  }
+
+  updateReportsKpi(reports = []) {
+    let totalCheckins = 0;
+    let totalGuests = 0;
+    let totalRevenue = 0;
+
+    reports.forEach((r) => {
+      totalCheckins += Number(r.totalCheckins) || 0;
+      totalGuests += Number(r.totalGuests) || 0;
+      totalRevenue += Number(r.totalAmountAed) || 0;
+    });
+
+    if (this.elements.kpiReportsCount) this.elements.kpiReportsCount.textContent = String(reports.length);
+    if (this.elements.kpiCheckinsCount) this.elements.kpiCheckinsCount.textContent = String(totalCheckins);
+    if (this.elements.kpiGuestsCount) this.elements.kpiGuestsCount.textContent = String(totalGuests);
+    if (this.elements.kpiRevenueCount) this.elements.kpiRevenueCount.textContent = `${totalRevenue} AED`;
+  }
+
+  renderReportsList(reports = [], { onExportReport, onExportAccounting, onInspectReport }) {
+    if (!this.elements.reportsListContainer) return;
+
+    this.updateReportsKpi(reports);
+
+    if (reports.length === 0) {
+      this.elements.reportsListContainer.innerHTML = `
+        <div class="flex h-48 flex-col items-center justify-center text-center p-4 text-slate-400">
+          <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
+          <span class="text-sm font-bold text-slate-600">No reports found</span>
+          <span class="text-xs text-slate-400 mt-0.5">Try adjusting your date or search filters.</span>
+        </div>
+      `;
+      return;
+    }
+
+    const cardsHtml = reports
+      .map((report) => {
+        const brandBadgeClass = report.brand === "KCA" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800";
+        return `
+          <div class="report-card rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3.5 transition hover:bg-white hover:shadow-sm sm:p-4" data-report-id="${escapeHtml(report.id)}">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5">
+                <span class="inline-flex rounded-lg px-2 py-0.5 text-xs font-black uppercase ${brandBadgeClass}">
+                  ${escapeHtml(report.brand)}
+                </span>
+                <span class="text-sm font-black text-slate-900 sm:text-base">
+                  ${escapeHtml(report.serviceDate)}
+                </span>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  class="btn-export-breakfast inline-flex h-9 items-center gap-1.5 rounded-xl bg-green-50 px-2.5 text-xs font-bold text-success transition active:scale-[0.96] hover:bg-green-100 sm:h-10 sm:px-3 sm:text-xs"
+                  data-date="${escapeHtml(report.serviceDate)}"
+                  data-brand="${escapeHtml(report.brand)}"
+                  title="Download Breakfast Report"
+                >
+                  <i class="fa-solid fa-file-excel"></i>
+                  <span>Report</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn-export-accounting inline-flex h-9 items-center gap-1.5 rounded-xl bg-red-50 px-2.5 text-xs font-bold text-danger transition active:scale-[0.96] hover:bg-red-100 sm:h-10 sm:px-3 sm:text-xs"
+                  data-date="${escapeHtml(report.serviceDate)}"
+                  data-brand="${escapeHtml(report.brand)}"
+                  title="Download Accounting Report"
+                >
+                  <i class="fa-solid fa-file-invoice-dollar"></i>
+                  <span>Accounting</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn-inspect-report inline-flex h-9 items-center justify-center rounded-xl bg-slate-200/70 px-2.5 text-xs font-bold text-slate-700 transition active:scale-[0.96] hover:bg-slate-300 sm:h-10 sm:px-3"
+                  data-date="${escapeHtml(report.serviceDate)}"
+                  data-brand="${escapeHtml(report.brand)}"
+                  title="Inspect Check-ins"
+                >
+                  <i class="fa-solid fa-chevron-down text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Stats Row -->
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold sm:grid-cols-4">
+              <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
+                <span class="text-slate-400">Check-ins:</span>
+                <span class="font-bold text-slate-800 ml-1">${report.totalCheckins}</span>
+              </div>
+              <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
+                <span class="text-slate-400">Guests:</span>
+                <span class="font-bold text-slate-800 ml-1">${report.totalGuests}</span>
+              </div>
+              <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
+                <span class="text-slate-400">Payments:</span>
+                <span class="font-bold text-slate-800 ml-1">${report.totalPayments}</span>
+              </div>
+              <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
+                <span class="text-slate-400">Revenue:</span>
+                <span class="font-bold text-rose-600 ml-1">${report.totalAmountAed} AED</span>
+              </div>
+            </div>
+
+            <!-- Expanded Details Slot -->
+            <div class="report-details-panel mt-3 rounded-xl bg-white p-3 border border-slate-200" hidden></div>
+          </div>
+        `;
+      })
+      .join("");
+
+    this.elements.reportsListContainer.innerHTML = cardsHtml;
+
+    // Attach click handlers
+    this.elements.reportsListContainer.querySelectorAll(".btn-export-breakfast").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        onExportReport(btn.dataset.date, btn.dataset.brand);
+      });
+    });
+
+    this.elements.reportsListContainer.querySelectorAll(".btn-export-accounting").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        onExportAccounting(btn.dataset.date, btn.dataset.brand);
+      });
+    });
+
+    this.elements.reportsListContainer.querySelectorAll(".btn-inspect-report").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".report-card");
+        const panel = card?.querySelector(".report-details-panel");
+        const icon = btn.querySelector("i");
+        if (panel) {
+          const isHidden = panel.hidden;
+          panel.hidden = !isHidden;
+          if (icon) {
+            icon.className = isHidden ? "fa-solid fa-chevron-up text-xs" : "fa-solid fa-chevron-down text-xs";
+          }
+          if (isHidden && !panel.dataset.loaded) {
+            panel.dataset.loaded = "true";
+            onInspectReport(btn.dataset.date, btn.dataset.brand, panel);
+          }
+        }
+      });
     });
   }
 }

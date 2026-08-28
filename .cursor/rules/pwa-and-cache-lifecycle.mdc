@@ -1,0 +1,27 @@
+---
+description: PWA service worker lifecycle, auto-update mechanism, and cache invalidation rules
+alwaysApply: true
+---
+
+# PWA & Service Worker Lifecycle Invariants
+
+Ensures all client devices and tablets receive live updates immediately without requiring manual app uninstallation or clearing cache.
+
+## 1. Service Worker Versioning & Cache Busting
+- Every substantive release, logic change, or bundle rebuild **MUST** increment `CACHE_NAME` in `service-worker.js` (e.g., `breakfast-checkin-v17` -> `breakfast-checkin-v18`).
+- Never delete or bypass the `APP_ASSETS` pre-caching array in `service-worker.js`.
+
+## 2. Immediate Activation (Skip Waiting)
+- `service-worker.js` **MUST** include the `message` event handler:
+  ```javascript
+  self.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "SKIP_WAITING") {
+      self.skipWaiting();
+    }
+  });
+  ```
+- `index.html` service worker registration **MUST**:
+  - Use `{ updateViaCache: "none" }`.
+  - Trigger `registration.update()` on page load, visibility change (`visibilitychange`), window focus, and on a recurring 10-minute interval.
+  - Post `{ type: "SKIP_WAITING" }` to waiting service workers immediately.
+  - Listen for `navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload())` to reload the page with new assets seamlessly.

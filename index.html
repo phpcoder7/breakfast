@@ -136,6 +136,11 @@
               <span>New Day</span>
             </button>
 
+            <button id="reportsDashboardButton" class="inline-flex h-11 min-h-touch shrink-0 items-center gap-2 rounded-2xl bg-blue-50 px-3 text-sm font-bold text-primary transition active:scale-[0.97] hover:bg-blue-100" type="button">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+              <span>Past Reports</span>
+            </button>
+
             <span id="currentUserBadge" class="inline-flex h-11 min-h-touch items-center rounded-full bg-primary/10 px-3 text-sm font-bold text-primary"></span>
 
             <button id="logoutButton" class="inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
@@ -171,6 +176,10 @@
           <button id="mobileNewDayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700" type="button">
             <i class="fa-solid fa-rotate-left"></i>
             <span>New Day</span>
+          </button>
+          <button id="mobileReportsDashboardButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-50 text-sm font-bold text-primary" type="button">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+            <span>Past Reports</span>
           </button>
           <button id="mobileLogoutButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white" type="button">
             <i class="fa-solid fa-right-from-bracket"></i>
@@ -446,6 +455,114 @@
         </div>
         <div id="modalBody" class="mb-5 text-slate-600"></div>
         <div id="modalActions" class="flex flex-wrap justify-end gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Reports & 20-Day Cloud Archive Dashboard Modal -->
+    <div id="reportsDashboardModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-2 backdrop-blur-sm sm:p-4" hidden aria-hidden="true">
+      <div class="flex max-h-[95dvh] w-full max-w-4xl flex-col rounded-3xl bg-white p-4 shadow-soft sm:p-6" role="dialog" aria-modal="true" aria-labelledby="reportsModalTitle">
+        <!-- Header -->
+        <div class="mb-4 flex shrink-0 items-center justify-between border-b border-slate-100 pb-3">
+          <div class="flex items-center gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <i class="fa-solid fa-cloud-arrow-down text-xl"></i>
+            </div>
+            <div>
+              <h2 id="reportsModalTitle" class="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+                Cloud Reports & Archive
+              </h2>
+              <p class="text-xs font-semibold text-slate-400">Past 20 Days Storage & 1-Click Excel Re-Export</p>
+            </div>
+          </div>
+          <button id="reportsDashboardCloseButton" class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition active:scale-[0.96] hover:bg-slate-200" type="button">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="mb-4 grid shrink-0 gap-2 sm:grid-cols-12">
+          <div class="relative sm:col-span-5">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
+            <input
+              id="reportSearchInput"
+              type="text"
+              placeholder="Search room, guest, or table..."
+              autocomplete="off"
+              class="h-11 w-full rounded-xl bg-slate-100 pl-9 pr-3 text-sm font-semibold text-slate-800 outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/25"
+            />
+          </div>
+
+          <div class="sm:col-span-3">
+            <select
+              id="reportBrandFilter"
+              class="h-11 w-full rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-800 outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/25"
+            >
+              <option value="ALL">All Brands (KCA & KTB)</option>
+              <option value="KCA">KCA Only</option>
+              <option value="KTB">KTB Only</option>
+            </select>
+          </div>
+
+          <div class="flex gap-2 sm:col-span-4">
+            <input
+              id="reportDateFilter"
+              type="date"
+              class="h-11 flex-1 rounded-xl bg-slate-100 px-3 text-sm font-semibold text-slate-800 outline-none transition focus:bg-white focus:ring-2 focus:ring-primary/25"
+            />
+            <button
+              id="reportRefreshButton"
+              class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition active:scale-[0.96] hover:bg-slate-200"
+              title="Refresh Cloud Data"
+              type="button"
+            >
+              <i class="fa-solid fa-rotate text-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Summary Strip -->
+        <div id="reportKpiStrip" class="mb-4 grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-4">
+          <div class="rounded-2xl bg-slate-50 p-3 text-center">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Reports</div>
+            <div id="kpiReportsCount" class="text-lg font-black text-slate-900 sm:text-xl">0</div>
+          </div>
+          <div class="rounded-2xl bg-blue-50 p-3 text-center">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-primary">Check-ins</div>
+            <div id="kpiCheckinsCount" class="text-lg font-black text-primary sm:text-xl">0</div>
+          </div>
+          <div class="rounded-2xl bg-emerald-50 p-3 text-center">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Total Guests</div>
+            <div id="kpiGuestsCount" class="text-lg font-black text-emerald-600 sm:text-xl">0</div>
+          </div>
+          <div class="rounded-2xl bg-rose-50 p-3 text-center">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-rose-600">Total Revenue</div>
+            <div id="kpiRevenueCount" class="text-lg font-black text-rose-600 sm:text-xl">0 AED</div>
+          </div>
+        </div>
+
+        <!-- Scrollable List of Reports -->
+        <div id="reportsListContainer" class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div class="flex h-40 flex-col items-center justify-center text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl text-primary"></i>
+            <span class="mt-2 text-sm font-semibold">Loading cloud reports...</span>
+          </div>
+        </div>
+
+        <!-- Footer / Manual Sync -->
+        <div class="mt-4 flex shrink-0 items-center justify-between border-t border-slate-100 pt-3 text-xs font-semibold text-slate-400">
+          <div class="flex items-center gap-1.5">
+            <i class="fa-solid fa-database text-primary"></i>
+            <span>Cloudflare D1 • 20-Day Auto Pruning</span>
+          </div>
+          <button
+            id="syncCurrentDayCloudButton"
+            class="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.96] hover:bg-slate-200"
+            type="button"
+          >
+            <i class="fa-solid fa-cloud-arrow-up text-primary"></i>
+            <span>Backup Today Now</span>
+          </button>
+        </div>
       </div>
     </div>
 

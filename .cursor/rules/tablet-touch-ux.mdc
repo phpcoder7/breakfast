@@ -1,0 +1,28 @@
+---
+description: Standards for tablet touch interaction, on-screen virtual keyboard, and form input
+globs: **/*.{html,js,css}
+alwaysApply: false
+---
+
+# Tablet & Touch UX Invariants
+
+Designed for harsh, fast-paced hotel breakfast environments using mobile and tablet touch devices.
+
+## 1. Input Field Accessibility & Virtual Keyboard
+- **NEVER** set `disabled` on primary search or check-in inputs (`#searchInput`, `#tableNumber`, `#actualGuests`) during idle states. Disabling fields prevents the tablet on-screen virtual keyboard from popping up on touch.
+- Numeric input fields (`#actualGuests`, guest count fields in modal forms) **MUST** include:
+  ```html
+  inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+  ```
+- Search input fields **MUST** include:
+  ```html
+  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+  ```
+
+## 2. Touch Delay & CSS Optimizations
+- `touch-action: manipulation;` **MUST** be maintained on all interactive elements (`input, select, textarea, button, .search-result, .card, .table-node`) to eliminate the 300ms touch delay on mobile browsers.
+- Hardware acceleration (`will-change: transform, opacity;`) and layout containment (`contain: layout style;`) must be preserved for dynamic list items to maintain 60 FPS scrolling on lower-end tablets.
+
+## 3. Focus & Form Navigation
+- Upon guest selection or search result enter key, auto-focus on `#tableNumber` input to allow rapid table entry without manual tapping.
+- After check-in submission, clear the form inputs and return focus to `#searchInput`.
