@@ -127,25 +127,38 @@ export function safeJsonParse(value, fallback) {
 }
 
 export function readStoredState() {
-  const snapshot = localStorage.getItem(STORAGE_KEYS.SNAPSHOT);
-  if (!snapshot) {
+  try {
+    const snapshot = localStorage.getItem(STORAGE_KEYS.SNAPSHOT);
+    if (!snapshot) {
+      return null;
+    }
+
+    const parsed = safeJsonParse(snapshot, null);
+    if (!parsed || parsed.serviceDate !== todayKey()) {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.warn("Could not read stored state from localStorage:", error);
     return null;
   }
-
-  const parsed = safeJsonParse(snapshot, null);
-  if (!parsed || parsed.serviceDate !== todayKey()) {
-    return null;
-  }
-
-  return parsed;
 }
 
 export function writeStoredState(state) {
-  localStorage.setItem(STORAGE_KEYS.SNAPSHOT, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEYS.SNAPSHOT, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Could not write state to localStorage (quota or privacy setting):", error);
+  }
 }
 
 export function clearStoredState() {
-  localStorage.removeItem(STORAGE_KEYS.SNAPSHOT);
+  try {
+    localStorage.removeItem(STORAGE_KEYS.SNAPSHOT);
+  } catch (error) {
+    console.warn("Could not clear stored state:", error);
+  }
 }
 
 export function createId(prefix = "id") {

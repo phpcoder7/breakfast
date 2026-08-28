@@ -16,7 +16,7 @@ import {
 import { exportAccountingReport, exportTodayReport } from "./export.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
-import { exactRoomMatch, searchGuests } from "./search.js";
+import { exactRoomMatch, globalSearchIndex, searchGuests } from "./search.js";
 import { BreakfastUI } from "./ui.js";
 import { getBrandLogo, getCurrentUser, isLoggedIn, login, logout } from "./auth.js";
 import { getTablesForUser } from "./tables.js";
@@ -78,6 +78,9 @@ class BreakfastApp {
 
   init() {
     this.bindEvents();
+    if (this.state.guests && this.state.guests.length) {
+      globalSearchIndex.buildIndex(this.state.guests);
+    }
     this.refreshUi();
     if (window.matchMedia("(max-width: 767px)").matches) {
       this.ui.setMobileView("search");
@@ -255,7 +258,7 @@ class BreakfastApp {
     this.ui.renderCheckIns(checkInsForTable);
     this.ui.renderPayments(paymentForTable);
     this.ui.renderTables(getTablesForUser(getCurrentUser()), this.state.checkIns);
-    const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast;
+    const filesReady = this.state.filesLoaded.mealPlan || this.state.filesLoaded.packageForecast || (this.state.guests && this.state.guests.length > 0);
     const manualReady = Boolean(this.selectedGuest?.statusOverride);
     const guestReady = Boolean(this.selectedGuest);
     this.ui.setCheckInEnabled((filesReady && guestReady) || manualReady);
@@ -290,6 +293,7 @@ class BreakfastApp {
         this.state.rawData.mealPlan || [],
         this.state.rawData.packageForecast || []
       );
+      globalSearchIndex.buildIndex(this.state.guests);
 
       if (this.state.filesLoaded.mealPlan && this.state.filesLoaded.packageForecast) {
         this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests for today's breakfast service (Both files loaded).`, "success");
@@ -377,7 +381,7 @@ class BreakfastApp {
 
   selectGuest(guest) {
     this.selectedGuest = guest;
-    this.ui.renderGuest(guest);
+    this.refreshUi();
     this.ui.clearSearchResults();
     this.ui.activateTab("checkin");
     this.ui.elements.tableNumberInput.focus();
@@ -395,7 +399,7 @@ class BreakfastApp {
 
     const guest = guestFromCheckInRecord(checkIn, this.state.guests);
     this.selectedGuest = guest;
-    this.ui.renderGuest(guest);
+    this.refreshUi();
     this.ui.setMobileView("search");
   }
 
@@ -733,6 +737,7 @@ class BreakfastApp {
       this.state.guests.push(guest);
       this.selectGuest(guest);
     }
+    globalSearchIndex.buildIndex(this.state.guests);
 
     this.persistState();
     this.ui.renderMessage(`Manual guest ${guest.roomNumber} loaded. Review status then check in.`, "success");
@@ -951,6 +956,7 @@ class BreakfastApp {
     }
 
     clearStoredState();
+    globalSearchIndex.clear();
 
     this.state.checkIns = [];
     this.state.paymentList = [];

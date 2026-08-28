@@ -3,23 +3,32 @@ import {
   normalizeSearchText,
   roomSearchVariants
 } from "./utils.js";
+import { GuestSearchIndex, globalSearchIndex } from "./searchIndex.js";
 
-function includesRoom(guestRoom, query) {
-  const variants = roomSearchVariants(query);
-  return variants.some((variant) => guestRoom.includes(variant) || variant.includes(guestRoom));
-}
+export { GuestSearchIndex, globalSearchIndex };
 
-function fullNameValue(guest) {
-  return [guest.firstName, guest.lastName].filter(Boolean).join(" ").trim();
-}
-
+/**
+ * Searches guests by room number, name, or confirmation code.
+ * Uses cached index if available or on-demand search.
+ * @param {any[]} guests
+ * @param {string} query
+ * @param {number} [limit=8]
+ * @returns {any[]}
+ */
 export function searchGuests(guests, query, limit = 8) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) {
     return [];
   }
 
+  // If the global index is synced with this list, use indexed O(1) lookups
+  if (globalSearchIndex.guests === guests && globalSearchIndex.guests.length > 0) {
+    return globalSearchIndex.search(query, limit);
+  }
+
+  // Otherwise perform fast inline search
   const safeGuests = Array.isArray(guests) ? guests : [];
+  const variants = roomSearchVariants(normalizedQuery);
 
   return safeGuests
     .filter((guest) => {
@@ -27,11 +36,11 @@ export function searchGuests(guests, query, limit = 8) {
       const room = normalizeSearchText(guest.roomNumber);
       const firstName = normalizeSearchText(guest.firstName);
       const lastName = normalizeSearchText(guest.lastName);
-      const fullName = normalizeSearchText(fullNameValue(guest));
+      const fullName = normalizeSearchText(guest.fullName || `${guest.firstName || ""} ${guest.lastName || ""}`);
       const confirmation = normalizeSearchText(guest.confirmationNumber);
 
       return (
-        includesRoom(room, normalizedQuery) ||
+        variants.some((v) => room.includes(v) || v.includes(room)) ||
         firstName.includes(normalizedQuery) ||
         lastName.includes(normalizedQuery) ||
         fullName.includes(normalizedQuery) ||
@@ -41,31 +50,57 @@ export function searchGuests(guests, query, limit = 8) {
     .slice(0, limit);
 }
 
+/**
+ * Finds exact room match.
+ * @param {any[]} guests
+ * @param {string} query
+ * @returns {any | null}
+ */
 export function exactRoomMatch(guests, query) {
+  if (globalSearchIndex.guests === guests && globalSearchIndex.guests.length > 0) {
+    return globalSearchIndex.exactRoomMatch(query);
+  }
+
   const variants = roomSearchVariants(query);
   const safeGuests = Array.isArray(guests) ? guests : [];
-  return safeGuests.find(
-    (guest) =>
-      guest && (variants.includes(String(guest.roomNumber || "").replace(/^0+/, "") || "0") || variants.includes(guest.roomNumber))
+  return (
+    safeGuests.find((guest) => {
+      if (!guest) return false;
+      const r = String(guest.roomNumber || "").trim();
+      const stripped = r.replace(/^0+/, "") || "0";
+      return variants.includes(r) || variants.includes(stripped);
+    }) || null
   );
 }
 
-function highlightMatch(text, query) {
+/**
+ * Highlights the query substring within the display text safely.
+ * @param {string} text
+ * @param {string} query
+ * @returns {string}
+ */
+export function highlightMatch(text, query) {
   const source = String(text ?? "");
   const normalizedSource = source.toLowerCase();
-  const normalizedQuery = query.toLowerCase();
+  const normalizedQuery = (query || "").trim().toLowerCase();
   const start = normalizedSource.indexOf(normalizedQuery);
 
-  if (start === -1 || !query) {
+  if (start === -1 || !normalizedQuery) {
     return escapeHtml(source);
   }
 
-  const end = start + query.length;
+  const end = start + normalizedQuery.length;
   return `${escapeHtml(source.slice(0, start))}<mark>${escapeHtml(source.slice(start, end))}</mark>${escapeHtml(source.slice(end))}`;
 }
 
+/**
+ * Renders HTML for search results.
+ * @param {any[]} results
+ * @param {string} query
+ * @returns {string}
+ */
 export function renderSearchResults(results, query) {
-  if (!results.length) {
+  if (!results || !results.length) {
     return `<div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-400">No matching guest found.</div>`;
   }
 

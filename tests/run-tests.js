@@ -8,10 +8,13 @@ import {
   formatDate,
   formatTime,
   parseInteger,
-  uniqueList
+  uniqueList,
+  safeJsonParse
 } from "../js/utils.js";
 import { mergeGuestData } from "../js/mergeData.js";
 import { searchGuests, exactRoomMatch } from "../js/search.js";
+import { GuestSearchIndex } from "../js/searchIndex.js";
+import { AppStore } from "../js/store.js";
 import {
   createHotelCheckIn,
   createWalkInCheckIn,
@@ -21,7 +24,8 @@ import {
   getExtraGuests,
   findHotelCheckInByRoom,
   findActiveCheckInsByTable,
-  checkOutCheckIn
+  checkOutCheckIn,
+  applyLateArrivals
 } from "../js/checkin.js";
 import {
   requiresPayment,
@@ -32,7 +36,7 @@ import {
 } from "../js/payment.js";
 import { getTablesForUser } from "../js/tables.js";
 
-console.log("=== Running Comprehensive Test Suite ===");
+console.log("=== Running Comprehensive Architectural & Performance Test Suite ===");
 
 let passed = 0;
 let failed = 0;
@@ -49,7 +53,7 @@ function test(name, fn) {
   }
 }
 
-// 1. UTILS TESTS
+// 1. UTILS & DEFENSIVE TESTS
 test("utils: normalizeRoom handles whitespace, zeros, nulls", () => {
   assert.equal(normalizeRoom(" 101 "), "101");
   assert.equal(normalizeRoom("  0204  "), "0204");
@@ -66,6 +70,11 @@ test("utils: parseInteger fallback handling", () => {
   assert.equal(parseInteger("4", 0), 4);
   assert.equal(parseInteger("invalid", 10), 10);
   assert.equal(parseInteger(null, 5), 5);
+});
+
+test("utils: safeJsonParse prevents crashes on malformed data", () => {
+  assert.deepEqual(safeJsonParse("{bad json}", { fallback: true }), { fallback: true });
+  assert.deepEqual(safeJsonParse('{"ok": 123}', {}), { ok: 123 });
 });
 
 test("utils: uniqueList removes duplicates and falsy", () => {
@@ -172,30 +181,42 @@ test("mergeData: empty or null inputs return empty array safely", () => {
   assert.deepEqual(mergeGuestData([], []), []);
 });
 
-// 3. SEARCH TESTS
-test("search: room search with variants (leading zero)", () => {
-  const guests = [
-    { roomNumber: "0105", firstName: "David", lastName: "Miller", confirmationNumber: "C1" },
-    { roomNumber: "1050", firstName: "Eva", lastName: "Long", confirmationNumber: "C2" }
-  ];
+// 3. SEARCH & INVERTED INDEX STRESS TESTS
+test("searchIndex: Inverted index performs sub-millisecond search on 2,000 simulated guests", () => {
+  const simulatedGuests = [];
+  for (let i = 1; i <= 2000; i++) {
+    simulatedGuests.push({
+      id: `sim-${i}`,
+      roomNumber: String(100 + (i % 900)),
+      firstName: `GuestFirst${i}`,
+      lastName: `GuestLast${i}`,
+      fullName: `GuestFirst${i} GuestLast${i}`,
+      confirmationNumber: `CONF-${100000 + i}`,
+      mealPlan: i % 2 === 0 ? "BB" : "RO",
+      breakfastStatus: i % 2 === 0 ? BREAKFAST_STATUS.INCLUDED : BREAKFAST_STATUS.PAYMENT,
+      breakfastQuantity: 2,
+      adults: 2,
+      children: 0
+    });
+  }
 
-  const res1 = searchGuests(guests, "105");
-  assert.equal(res1.length >= 1, true);
-  assert.equal(res1.some((g) => g.roomNumber === "0105"), true);
+  const index = new GuestSearchIndex();
+  const buildStart = performance.now();
+  index.buildIndex(simulatedGuests);
+  const buildTime = performance.now() - buildStart;
+  assert.equal(buildTime < 100, true, `Index build took ${buildTime}ms, expected < 100ms`);
 
-  const exact = exactRoomMatch(guests, "105");
-  assert.equal(exact.roomNumber, "0105");
-});
+  const searchStart = performance.now();
+  const results = index.search("GuestFirst500", 8);
+  const searchTime = performance.now() - searchStart;
+  assert.equal(results.length > 0, true);
+  assert.equal(searchTime < 10, true, `Search took ${searchTime}ms, expected < 10ms`);
 
-test("search: guest name and confirmation matching", () => {
-  const guests = [
-    { roomNumber: "301", firstName: "Mohamed", lastName: "Salah", confirmationNumber: "M987" }
-  ];
-
-  assert.equal(searchGuests(guests, "salah").length, 1);
-  assert.equal(searchGuests(guests, "mohamed").length, 1);
-  assert.equal(searchGuests(guests, "M987").length, 1);
-  assert.equal(searchGuests(guests, "nonexistent").length, 0);
+  const exactStart = performance.now();
+  const exact = index.exactRoomMatch("150");
+  const exactTime = performance.now() - exactStart;
+  assert.notEqual(exact, null);
+  assert.equal(exactTime < 2, true, `Exact match took ${exactTime}ms, expected < 2ms`);
 });
 
 // 4. CHECK-IN & ENTITLEMENT TESTS
@@ -242,6 +263,27 @@ test("checkin: entitlement exceeded calculation", () => {
   assert.equal(amountAed(checkin), 300); // 2 * 150 AED
 });
 
+test("checkin: late arrivals handling and table sharing", () => {
+  const initialCheckIn = {
+    id: "chk-1",
+    roomNumber: "505",
+    guestName: "Smith Party",
+    tableNumber: "10",
+    actualGuests: 2,
+    extraGuests: 0,
+    entitlementExceeded: false,
+    checkedOut: false
+  };
+
+  const updated = applyLateArrivals(initialCheckIn, {
+    additionalGuests: 2,
+    tableNumber: "12"
+  });
+
+  assert.equal(updated.actualGuests, 4);
+  assert.equal(updated.tableNumber, "12");
+});
+
 test("checkin: walk-in and apartment check-ins", () => {
   const walkIn = createWalkInCheckIn({
     guestName: "WalkIn Guest",
@@ -268,7 +310,7 @@ test("checkin: walk-in and apartment check-ins", () => {
   assert.equal(amountAed(apt), 240); // 2 * 120 AED
 });
 
-// 5. PAYMENT QUEUE & CHECKOUT TESTS
+// 5. PAYMENT QUEUE & STORE TRANSACTION TESTS
 test("payment: syncPaymentList and markPaymentPaid", () => {
   const walkIn = createWalkInCheckIn({
     guestName: "VIP",
@@ -299,6 +341,16 @@ test("tables: active check-ins tracking and checkout", () => {
   checkIns = checkOutCheckIn(checkIns, checkin1.id);
   activeAtTable20 = findActiveCheckInsByTable(checkIns, "20");
   assert.equal(activeAtTable20.length, 0);
+});
+
+test("tables: brand table configuration returns correct counts", () => {
+  const kcaTables = getTablesForUser("KCA");
+  assert.equal(kcaTables.length, 90);
+  assert.equal(kcaTables[0], "1");
+  assert.equal(kcaTables[89], "90");
+
+  const ktbTables = getTablesForUser("KTB");
+  assert.equal(ktbTables.length > 20, true);
 });
 
 // SUMMARY

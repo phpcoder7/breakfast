@@ -219,6 +219,11 @@ mark {
 
 .card-enter {
   animation: cardIn 0.28s ease both;
+  will-change: transform, opacity;
+}
+
+.search-result {
+  contain: layout style;
 }
 
 @keyframes pulseSoft {
