@@ -397,12 +397,58 @@ export class BreakfastUI {
       superAdminBrandWrap: document.querySelector("#superAdminBrandWrap"),
       superAdminBrandSelect: document.querySelector("#superAdminBrandSelect"),
       syncStatusBadge: document.querySelector("#syncStatusBadge"),
-      mobileSyncStatusBadge: document.querySelector("#mobileSyncStatusBadge")
+      mobileSyncStatusBadge: document.querySelector("#mobileSyncStatusBadge"),
+      filterCheckinsAll: document.querySelector("#filterCheckinsAll"),
+      filterCheckinsActive: document.querySelector("#filterCheckinsActive"),
+      filterCheckinsCheckedOut: document.querySelector("#filterCheckinsCheckedOut"),
+      filterCheckinsAllCount: document.querySelector("#filterCheckinsAllCount"),
+      filterCheckinsActiveCount: document.querySelector("#filterCheckinsActiveCount"),
+      filterCheckinsCheckedOutCount: document.querySelector("#filterCheckinsCheckedOutCount")
     };
+
+    this._checkinStatusFilter = "all";
 
     this.bindRecentSearchClicks();
     this.bindCheckInSearch();
+    this.bindCheckInFilterButtons();
     this.renderRecentSearches();
+  }
+
+  bindCheckInFilterButtons() {
+    const buttons = [
+      this.elements.filterCheckinsAll,
+      this.elements.filterCheckinsActive,
+      this.elements.filterCheckinsCheckedOut
+    ].filter(Boolean);
+
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const filter = btn.dataset.checkinFilter || "all";
+        this.setCheckInStatusFilter(filter);
+      });
+    });
+  }
+
+  setCheckInStatusFilter(filter) {
+    this._checkinStatusFilter = filter;
+
+    const buttons = [
+      { el: this.elements.filterCheckinsAll, key: "all" },
+      { el: this.elements.filterCheckinsActive, key: "active" },
+      { el: this.elements.filterCheckinsCheckedOut, key: "checkedout" }
+    ];
+
+    buttons.forEach(({ el, key }) => {
+      if (!el) return;
+      const isActive = key === filter;
+      if (isActive) {
+        el.className = "btn-checkin-filter inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-white shadow-soft transition active:scale-[0.97]";
+      } else {
+        el.className = "btn-checkin-filter inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200";
+      }
+    });
+
+    this.filterCheckIns();
   }
 
   bindCheckInSearch() {
@@ -594,6 +640,21 @@ export class BreakfastUI {
         this.elements.checkinGuestSearchInput.value = "";
       }
     }
+
+    const totalCount = records.length;
+    const activeCount = records.filter((r) => !r.checkedOut).length;
+    const checkedOutCount = records.filter((r) => Boolean(r.checkedOut)).length;
+
+    if (this.elements.filterCheckinsAllCount) {
+      this.elements.filterCheckinsAllCount.textContent = String(totalCount);
+    }
+    if (this.elements.filterCheckinsActiveCount) {
+      this.elements.filterCheckinsActiveCount.textContent = String(activeCount);
+    }
+    if (this.elements.filterCheckinsCheckedOutCount) {
+      this.elements.filterCheckinsCheckedOutCount.textContent = String(checkedOutCount);
+    }
+
     this.filterCheckIns();
     this.updateStatistics(records, this._lastPayments || []);
   }
@@ -611,9 +672,25 @@ export class BreakfastUI {
 
     const tableQuery = this.elements.checkinTableSearchInput?.value || "";
     const guestQuery = this.elements.checkinGuestSearchInput?.value || "";
-    const filtered = records.filter((record) =>
-      matchesCheckInFilters(record, tableQuery, guestQuery)
-    );
+    const statusFilter = this._checkinStatusFilter || "all";
+
+    const filtered = records
+      .filter((record) => {
+        if (statusFilter === "active" && record.checkedOut) return false;
+        if (statusFilter === "checkedout" && !record.checkedOut) return false;
+        return matchesCheckInFilters(record, tableQuery, guestQuery);
+      })
+      .sort((a, b) => {
+        // Priority 1: In restaurant (checkedOut = false) first, Checked Out (checkedOut = true) last
+        const aCheckedOut = a.checkedOut ? 1 : 0;
+        const bCheckedOut = b.checkedOut ? 1 : 0;
+        if (aCheckedOut !== bCheckedOut) {
+          return aCheckedOut - bCheckedOut;
+        }
+        // Priority 2: Newest timestamp first within each group
+        return String(b.timestamp || "").localeCompare(String(a.timestamp || ""));
+      });
+
     this.elements.checkinTableBody.innerHTML = filtered.length
       ? filtered.map((record) => checkInCardMarkup(record)).join("")
       : emptyCardsMarkup("No matching check-ins.");

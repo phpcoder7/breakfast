@@ -384,29 +384,65 @@
           </div>
 
           <div data-tab-panel="checkins" class="min-h-0 flex-1 overflow-y-auto" hidden>
-            <div class="mb-3 grid shrink-0 gap-2 sm:grid-cols-2">
-              <label class="relative block">
-                <i class="fa-solid fa-chair pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                <input
-                  id="checkinTableSearchInput"
-                  class="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/25"
-                  type="search"
-                  inputmode="numeric"
-                  placeholder="Search by table #"
-                  autocomplete="off"
-                />
-              </label>
-              <label class="relative block">
-                <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                <input
-                  id="checkinGuestSearchInput"
-                  class="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/25"
-                  type="search"
-                  inputmode="search"
-                  placeholder="Search by room or guest name"
-                  autocomplete="off"
-                />
-              </label>
+            <div class="mb-3 flex flex-col gap-2">
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label class="relative block">
+                  <i class="fa-solid fa-chair pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input
+                    id="checkinTableSearchInput"
+                    class="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                    type="search"
+                    inputmode="numeric"
+                    placeholder="Search by table #"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="relative block">
+                  <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input
+                    id="checkinGuestSearchInput"
+                    class="h-12 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                    type="search"
+                    inputmode="search"
+                    placeholder="Search by room or guest name"
+                    autocomplete="off"
+                  />
+                </label>
+              </div>
+
+              <!-- Filter Buttons: All, Active in Restaurant, Checked Out -->
+              <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <button
+                  id="filterCheckinsAll"
+                  type="button"
+                  data-checkin-filter="all"
+                  class="btn-checkin-filter inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-white shadow-soft transition active:scale-[0.97]"
+                >
+                  <i class="fa-solid fa-layer-group"></i>
+                  <span>All</span>
+                  <span id="filterCheckinsAllCount" class="ml-0.5 rounded-md bg-white/20 px-1.5 py-0.5 text-[10px] font-black">0</span>
+                </button>
+                <button
+                  id="filterCheckinsActive"
+                  type="button"
+                  data-checkin-filter="active"
+                  class="btn-checkin-filter inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200"
+                >
+                  <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>In Restaurant</span>
+                  <span id="filterCheckinsActiveCount" class="ml-0.5 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-800">0</span>
+                </button>
+                <button
+                  id="filterCheckinsCheckedOut"
+                  type="button"
+                  data-checkin-filter="checkedout"
+                  class="btn-checkin-filter inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200"
+                >
+                  <i class="fa-solid fa-arrow-right-from-bracket text-slate-400"></i>
+                  <span>Checked Out</span>
+                  <span id="filterCheckinsCheckedOutCount" class="ml-0.5 rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-black text-slate-700">0</span>
+                </button>
+              </div>
             </div>
             <div id="checkinTableBody" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
           </div>
