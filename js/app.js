@@ -13,7 +13,7 @@ import {
   normalizeTable,
   updateCheckInTableNumber
 } from "./checkin.js";
-import { exportAccountingReport, exportTodayReport } from "./export.js";
+import { exportTodayReport } from "./export.js";
 import { fetchFullReport, fetchReportsFromCloud, saveDailyReportToCloud } from "./cloudSync.js";
 import { mergeGuestData } from "./mergeData.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
@@ -42,6 +42,7 @@ import {
   BREAKFAST_STATUS,
   clearStoredState,
   escapeHtml,
+  formatTime,
   normalizeRoom,
   parseInteger,
   readStoredState,
@@ -153,7 +154,6 @@ class BreakfastApp {
     elements.manualGuestButton?.addEventListener("click", () => this.handleManualGuest());
     elements.newDayButton.addEventListener("click", () => this.handleNewDay());
     elements.exportTodayButton.addEventListener("click", () => this.handleExportToday());
-    elements.exportAccountingButton.addEventListener("click", () => this.handleExportAccounting());
 
     // Past Reports & Cloud Archive Dashboard Events
     elements.reportsDashboardButton?.addEventListener("click", () => this.handleOpenReportsDashboard());
@@ -252,7 +252,6 @@ class BreakfastApp {
       document.querySelector("#logoutButton")?.click();
     });
     document.querySelector("#mobileExportTodayButton")?.addEventListener("click", () => this.handleExportToday());
-    document.querySelector("#mobileExportAccountingButton")?.addEventListener("click", () => this.handleExportAccounting());
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -305,10 +304,7 @@ class BreakfastApp {
     const manualReady = Boolean(this.selectedGuest?.statusOverride);
     const guestReady = Boolean(this.selectedGuest);
     this.ui.setCheckInEnabled((filesReady && guestReady) || manualReady);
-    this.ui.setExportState(
-      Boolean(this.state.checkIns.length),
-      Boolean(this.state.paymentList.length)
-    );
+    this.ui.setExportState(Boolean(this.state.checkIns.length));
     const activeTab = this.ui.elements.tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.tabTarget || "checkin";
     this.ui.activateTab(activeTab);
   }
@@ -462,18 +458,32 @@ class BreakfastApp {
     const occupants = findActiveCheckInsByTable(this.state.checkIns, tableNumber);
     const body = occupants.length
       ? `
-        <div class="space-y-2">
+        <div class="space-y-3">
           ${occupants
             .map((record) => {
               const guests =
                 parseInteger(record.actualGuests, NaN) >= 0
                   ? parseInteger(record.actualGuests, 0)
                   : parseInteger(record.adults, 0) + parseInteger(record.children, 0);
+              const inTime = record.timestamp ? formatTime(record.timestamp) : (record.timeLabel || "");
               return `
-                <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                  <div class="text-lg font-black text-slate-900">${escapeHtml(record.roomNumber || record.guestType || "Guest")}</div>
-                  <div class="mt-1 text-sm font-semibold text-slate-600">${escapeHtml(record.guestName || "-")}</div>
-                  <div class="mt-2 text-xs font-bold text-slate-500">Guests ${guests}</div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-lg font-black text-slate-900">${escapeHtml(record.roomNumber || record.guestType || "Guest")}</div>
+                    <span class="text-xs font-semibold text-slate-400">${inTime ? `In: ${escapeHtml(inTime)}` : ""}</span>
+                  </div>
+                  <div class="mt-1 text-sm font-semibold text-slate-700">${escapeHtml(record.guestName || "-")}</div>
+                  <div class="mt-1 text-xs font-bold text-slate-500">Guests: ${guests}</div>
+                  <div class="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      class="btn-table-checkout-item inline-flex h-10 items-center gap-1.5 rounded-xl bg-red-600 px-3.5 text-xs font-bold text-white shadow-soft transition active:scale-[0.97] hover:bg-red-700"
+                      data-table-checkout-id="${escapeHtml(record.id)}"
+                    >
+                      <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                      <span>Check Out & Free Table</span>
+                    </button>
+                  </div>
                 </div>
               `;
             })
@@ -492,6 +502,16 @@ class BreakfastApp {
           onClick: () => this.ui.closeModal()
         }
       ]
+    });
+
+    this.ui.elements.modalBody?.querySelectorAll(".btn-table-checkout-item").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.tableCheckoutId;
+        this.ui.closeModal();
+        if (id) {
+          this.handleCheckOut(id);
+        }
+      });
     });
   }
 
@@ -982,7 +1002,7 @@ class BreakfastApp {
   async handleNewDay() {
     const confirmed = await this.ui.promptConfirm({
       title: "Start New Day",
-      message: "This will download today's Breakfast Report and Accounting Report, backup to Cloudflare D1, then clear check-ins, payments, and unload XML files.",
+      message: "This will download today's Breakfast Report, backup to Cloudflare D1, then clear check-ins, payments, and unload XML files.",
       confirmLabel: "Download & New Day",
       danger: true
     });
@@ -993,7 +1013,6 @@ class BreakfastApp {
 
     try {
       exportTodayReport(this.state.checkIns);
-      exportAccountingReport(this.state.paymentList);
       await this.syncCurrentStateToCloud();
     } catch (error) {
       this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
@@ -1070,15 +1089,6 @@ class BreakfastApp {
     }
   }
 
-  handleExportAccounting() {
-    try {
-      exportAccountingReport(this.state.paymentList);
-      this.ui.renderMessage("Accounting report exported successfully.", "success");
-    } catch (error) {
-      this.ui.renderMessage(error.message, "error");
-    }
-  }
-
   async syncCurrentStateToCloud(showToast = false) {
     const brand = getActiveBrand();
     const serviceDate = this.state.serviceDate || todayKey();
@@ -1140,7 +1150,6 @@ class BreakfastApp {
 
     this.ui.renderReportsList(result.reports, {
       onExportReport: (d, b) => this.handleExportPastReport(d, b),
-      onExportAccounting: (d, b) => this.handleExportPastAccounting(d, b),
       onInspectReport: (d, b, p) => this.handleInspectPastReport(d, b, p)
     });
   }
@@ -1162,23 +1171,6 @@ class BreakfastApp {
     }
   }
 
-  async handleExportPastAccounting(serviceDate, brand) {
-    this.ui.renderMessage(`Fetching accounting for ${brand} on ${serviceDate}...`, "info");
-    const reportData = await fetchFullReport(serviceDate, brand);
-    if (!reportData || !Array.isArray(reportData.paymentList)) {
-      this.ui.renderMessage("Could not retrieve accounting data from cloud.", "error");
-      return;
-    }
-
-    try {
-      const filename = `breakfast-accounting-${serviceDate}-${brand}.xlsx`;
-      exportAccountingReport(reportData.paymentList, filename);
-      this.ui.renderMessage(`Downloaded ${filename} successfully.`, "success");
-    } catch (error) {
-      this.ui.renderMessage(`Export error: ${error.message}`, "error");
-    }
-  }
-
   async handleInspectPastReport(serviceDate, brand, panelElement) {
     panelElement.innerHTML = `<div class="text-xs text-slate-400 font-semibold"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading check-ins...</div>`;
     const reportData = await fetchFullReport(serviceDate, brand);
@@ -1189,45 +1181,60 @@ class BreakfastApp {
 
     const checkIns = reportData.checkIns;
     const rowsHtml = checkIns
-      .slice(0, 50)
+      .slice(0, 100)
       .map((c) => {
         const room = escapeHtml(c.roomNumber || c.displayLocation || "-");
         const name = escapeHtml(c.guestName || "-");
         const table = escapeHtml(c.tableNumber || "-");
         const guests = c.actualGuests || (Number(c.adults) || 0) + (Number(c.children) || 0);
+
+        const inTime = c.timestamp ? formatTime(c.timestamp) : (c.timeLabel || "-");
+        const outTime = c.checkedOutAt ? formatTime(c.checkedOutAt) : (c.checkedOut ? "Checked out" : '<span class="text-amber-600 font-bold">Active</span>');
+
+        let statusBadge = "";
+        const isIncluded = c.breakfastStatus === "included" && !c.entitlementExceeded;
+        if (isIncluded) {
+          statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-green-100 text-green-800">Included</span>';
+        } else if (c.paid) {
+          const paidTime = c.paidAt ? ` (${formatTime(c.paidAt)})` : "";
+          statusBadge = `<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800">Paid${escapeHtml(paidTime)}</span>`;
+        } else {
+          statusBadge = '<span class="inline-flex rounded-lg px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-800">Unpaid</span>';
+        }
+
         return `
-          <tr class="border-b border-slate-100 text-[11px]">
-            <td class="py-1 px-2 font-bold text-slate-900">${room}</td>
-            <td class="py-1 px-2 text-slate-600">${name}</td>
-            <td class="py-1 px-2 font-bold text-slate-800">${table}</td>
-            <td class="py-1 px-2 text-slate-500">${guests}</td>
-            <td class="py-1 px-2">
-              <span class="inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ${c.breakfastStatus === "included" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}">
-                ${c.breakfastStatus === "included" ? "Included" : "Payment"}
-              </span>
-            </td>
+          <tr class="border-b border-slate-100 text-[11px] hover:bg-slate-50/80">
+            <td class="py-1.5 px-2 font-bold text-slate-900">${room}</td>
+            <td class="py-1.5 px-2 text-slate-700 max-w-[120px] truncate">${name}</td>
+            <td class="py-1.5 px-2 font-black text-slate-800">${table}</td>
+            <td class="py-1.5 px-2 text-center text-slate-600 font-semibold">${guests}</td>
+            <td class="py-1.5 px-2 text-slate-500">${inTime}</td>
+            <td class="py-1.5 px-2 text-slate-500">${outTime}</td>
+            <td class="py-1.5 px-2">${statusBadge}</td>
           </tr>
         `;
       })
       .join("");
 
     panelElement.innerHTML = `
-      <div class="max-h-56 overflow-y-auto">
+      <div class="max-h-72 overflow-y-auto">
         <table class="w-full text-left">
           <thead>
             <tr class="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200">
-              <th class="py-1 px-2">Room</th>
-              <th class="py-1 px-2">Guest</th>
-              <th class="py-1 px-2">Table</th>
-              <th class="py-1 px-2">Guests</th>
-              <th class="py-1 px-2">Status</th>
+              <th class="py-1.5 px-2">Room</th>
+              <th class="py-1.5 px-2">Guest</th>
+              <th class="py-1.5 px-2">Table</th>
+              <th class="py-1.5 px-2 text-center">Guests</th>
+              <th class="py-1.5 px-2">In Time</th>
+              <th class="py-1.5 px-2">Out Time</th>
+              <th class="py-1.5 px-2">Payment / Status</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
           </tbody>
         </table>
-        ${checkIns.length > 50 ? `<div class="text-[10px] text-slate-400 text-center mt-1">Showing first 50 of ${checkIns.length} records</div>` : ""}
+        ${checkIns.length > 100 ? `<div class="text-[10px] text-slate-400 text-center mt-1">Showing first 100 of ${checkIns.length} records</div>` : ""}
       </div>
     `;
   }

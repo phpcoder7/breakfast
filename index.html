@@ -197,17 +197,13 @@
             <i class="fa-solid fa-cloud-arrow-down"></i>
             <span>Past Reports</span>
           </button>
+          <button id="mobileExportTodayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-bold text-success" type="button">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Export Report</span>
+          </button>
           <button id="mobileLogoutButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white" type="button">
             <i class="fa-solid fa-right-from-bracket"></i>
             <span>Logout</span>
-          </button>
-          <button id="mobileExportTodayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-bold text-success" type="button">
-            <i class="fa-solid fa-file-excel"></i>
-            <span>Report</span>
-          </button>
-          <button id="mobileExportAccountingButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-50 text-sm font-bold text-danger" type="button">
-            <i class="fa-solid fa-file-invoice-dollar"></i>
-            <span>Accounting</span>
           </button>
         </div>
       </section>
@@ -288,13 +284,9 @@
               </button>
             </div>
             <div class="flex gap-1.5 sm:gap-2">
-              <button id="exportTodayButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-3 sm:text-xs" type="button" disabled>
+              <button id="exportTodayButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-4 sm:text-xs" type="button" disabled>
                 <i class="fa-solid fa-file-excel text-success"></i>
-                <span>Report</span>
-              </button>
-              <button id="exportAccountingButton" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 text-[11px] font-bold text-slate-700 transition active:scale-[0.97] disabled:opacity-40 sm:h-11 sm:rounded-2xl sm:px-3 sm:text-xs" type="button" disabled>
-                <i class="fa-solid fa-file-invoice-dollar text-danger"></i>
-                <span>Accounting</span>
+                <span>Export Report</span>
               </button>
             </div>
           </div>
@@ -564,9 +556,9 @@
             <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Total Guests</div>
             <div id="kpiGuestsCount" class="text-lg font-black text-emerald-600 sm:text-xl">0</div>
           </div>
-          <div class="rounded-2xl bg-rose-50 p-3 text-center">
-            <div class="text-[11px] font-bold uppercase tracking-wider text-rose-600">Total Revenue</div>
-            <div id="kpiRevenueCount" class="text-lg font-black text-rose-600 sm:text-xl">0 AED</div>
+          <div class="rounded-2xl bg-purple-50 p-3 text-center">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-purple-600">Payments</div>
+            <div id="kpiPaymentsCount" class="text-lg font-black text-purple-600 sm:text-xl">0</div>
           </div>
         </div>
 

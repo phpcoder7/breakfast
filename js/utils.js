@@ -25,9 +25,6 @@ export const GUEST_TYPES = {
   APARTMENT: "Apartment"
 };
 
-export const BREAKFAST_PRICE_AED = 150;
-export const APARTMENT_PRICE_AED = 120;
-
 export const STORAGE_KEYS = {
   SNAPSHOT: "breakfast-checkin-state"
 };
@@ -208,7 +205,7 @@ export function reasonLabel(guestType, breakfastStatus) {
   }
 
   if (guestType === GUEST_TYPES.APARTMENT) {
-    return "Apartment (120 AED — 20% discount)";
+    return "Apartment (20% discount)";
   }
 
   if (breakfastStatus === BREAKFAST_STATUS.PAYMENT) {

@@ -384,7 +384,7 @@ export class BreakfastUI {
       kpiReportsCount: document.querySelector("#kpiReportsCount"),
       kpiCheckinsCount: document.querySelector("#kpiCheckinsCount"),
       kpiGuestsCount: document.querySelector("#kpiGuestsCount"),
-      kpiRevenueCount: document.querySelector("#kpiRevenueCount"),
+      kpiPaymentsCount: document.querySelector("#kpiPaymentsCount"),
       manageTablesButton: document.querySelector("#manageTablesButton"),
       tableManagerModal: document.querySelector("#tableManagerModal"),
       tableManagerCloseButton: document.querySelector("#tableManagerCloseButton"),
@@ -679,17 +679,14 @@ export class BreakfastUI {
     this.elements.checkInButton.disabled = !enabled;
   }
 
-  setExportState(hasCheckIns, hasPayments) {
-    this.elements.exportTodayButton.disabled = !hasCheckIns;
-    this.elements.exportAccountingButton.disabled = !hasPayments;
+  setExportState(hasCheckIns) {
+    if (this.elements.exportTodayButton) {
+      this.elements.exportTodayButton.disabled = !hasCheckIns;
+    }
 
     const mobileExportToday = document.querySelector("#mobileExportTodayButton");
-    const mobileExportAccounting = document.querySelector("#mobileExportAccountingButton");
     if (mobileExportToday) {
       mobileExportToday.disabled = !hasCheckIns;
-    }
-    if (mobileExportAccounting) {
-      mobileExportAccounting.disabled = !hasPayments;
     }
   }
 
@@ -918,21 +915,21 @@ export class BreakfastUI {
   updateReportsKpi(reports = []) {
     let totalCheckins = 0;
     let totalGuests = 0;
-    let totalRevenue = 0;
+    let totalPayments = 0;
 
     reports.forEach((r) => {
       totalCheckins += Number(r.totalCheckins) || 0;
       totalGuests += Number(r.totalGuests) || 0;
-      totalRevenue += Number(r.totalAmountAed) || 0;
+      totalPayments += Number(r.totalPayments) || 0;
     });
 
     if (this.elements.kpiReportsCount) this.elements.kpiReportsCount.textContent = String(reports.length);
     if (this.elements.kpiCheckinsCount) this.elements.kpiCheckinsCount.textContent = String(totalCheckins);
     if (this.elements.kpiGuestsCount) this.elements.kpiGuestsCount.textContent = String(totalGuests);
-    if (this.elements.kpiRevenueCount) this.elements.kpiRevenueCount.textContent = `${totalRevenue} AED`;
+    if (this.elements.kpiPaymentsCount) this.elements.kpiPaymentsCount.textContent = String(totalPayments);
   }
 
-  renderReportsList(reports = [], { onExportReport, onExportAccounting, onInspectReport }) {
+  renderReportsList(reports = [], { onExportReport, onInspectReport }) {
     if (!this.elements.reportsListContainer) return;
 
     this.updateReportsKpi(reports);
@@ -977,16 +974,6 @@ export class BreakfastUI {
                 </button>
                 <button
                   type="button"
-                  class="btn-export-accounting inline-flex h-9 items-center gap-1.5 rounded-xl bg-red-50 px-2.5 text-xs font-bold text-danger transition active:scale-[0.96] hover:bg-red-100 sm:h-10 sm:px-3 sm:text-xs"
-                  data-date="${escapeHtml(report.serviceDate)}"
-                  data-brand="${escapeHtml(report.brand)}"
-                  title="Download Accounting Report"
-                >
-                  <i class="fa-solid fa-file-invoice-dollar"></i>
-                  <span>Accounting</span>
-                </button>
-                <button
-                  type="button"
                   class="btn-inspect-report inline-flex h-9 items-center justify-center rounded-xl bg-slate-200/70 px-2.5 text-xs font-bold text-slate-700 transition active:scale-[0.96] hover:bg-slate-300 sm:h-10 sm:px-3"
                   data-date="${escapeHtml(report.serviceDate)}"
                   data-brand="${escapeHtml(report.brand)}"
@@ -998,7 +985,7 @@ export class BreakfastUI {
             </div>
 
             <!-- Stats Row -->
-            <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold sm:grid-cols-4">
+            <div class="mt-3 grid grid-cols-3 gap-2 text-xs font-semibold">
               <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
                 <span class="text-slate-400">Check-ins:</span>
                 <span class="font-bold text-slate-800 ml-1">${report.totalCheckins}</span>
@@ -1009,11 +996,7 @@ export class BreakfastUI {
               </div>
               <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
                 <span class="text-slate-400">Payments:</span>
-                <span class="font-bold text-slate-800 ml-1">${report.totalPayments}</span>
-              </div>
-              <div class="rounded-xl bg-white px-2.5 py-1.5 shadow-2xs border border-slate-100">
-                <span class="text-slate-400">Revenue:</span>
-                <span class="font-bold text-rose-600 ml-1">${report.totalAmountAed} AED</span>
+                <span class="font-bold text-purple-700 ml-1">${report.totalPayments}</span>
               </div>
             </div>
 
@@ -1030,12 +1013,6 @@ export class BreakfastUI {
     this.elements.reportsListContainer.querySelectorAll(".btn-export-breakfast").forEach((btn) => {
       btn.addEventListener("click", () => {
         onExportReport(btn.dataset.date, btn.dataset.brand);
-      });
-    });
-
-    this.elements.reportsListContainer.querySelectorAll(".btn-export-accounting").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        onExportAccounting(btn.dataset.date, btn.dataset.brand);
       });
     });
 

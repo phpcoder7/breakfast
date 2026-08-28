@@ -17,46 +17,39 @@ function writeWorkbook(rows, fileName, sheetName) {
 }
 
 export function exportTodayReport(checkIns, customFilename = "") {
-  const rows = checkIns.map((record) => ({
-    Time: record.timeLabel || (record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""),
-    "Room Number": record.roomNumber || record.displayLocation || "-",
-    "Guest Name": record.guestName || "-",
-    Adults: record.adults ?? 0,
-    Children: record.children ?? 0,
-    Table: record.tableNumber || "-",
-    "Meal Plan": record.mealPlan || "-",
-    Package: record.products || "-",
-    "Breakfast Included": record.breakfastStatus === "included" ? "Yes" : "No",
-    "Guest Type": record.guestType || "Hotel",
-    "FO Override": record.statusOverride ? "Yes" : "No",
-    "Checked Out": record.checkedOut ? "Yes" : "No",
-    "Check Out Time": record.checkedOutAt ? formatTime(record.checkedOutAt) : ""
-  }));
+  const rows = checkIns.map((record) => {
+    const isIncluded = record.breakfastStatus === "included" && !record.entitlementExceeded;
+    let paymentStatus = "Included";
+    if (!isIncluded) {
+      if (record.paid) {
+        paymentStatus = `Paid${record.paidAt ? ` (${formatTime(record.paidAt)})` : ""}`;
+      } else {
+        paymentStatus = "Unpaid";
+      }
+    }
+
+    const checkInTime = record.timeLabel || (record.timestamp ? formatTime(record.timestamp) : "");
+    const checkOutTime = record.checkedOutAt ? formatTime(record.checkedOutAt) : (record.checkedOut ? "Checked out" : "Active");
+
+    return {
+      "Check-in Time": checkInTime,
+      "Check-out Time": checkOutTime,
+      "Room Number": record.roomNumber || record.displayLocation || "-",
+      "Guest Name": record.guestName || "-",
+      "Table Number": record.tableNumber || "-",
+      Adults: record.adults ?? 0,
+      Children: record.children ?? 0,
+      "Actual Guests": record.actualGuests ?? (Number(record.adults || 0) + Number(record.children || 0)),
+      "Guest Type": record.guestType || "Hotel",
+      "Meal Plan": record.mealPlan || "-",
+      Package: record.products || "-",
+      "Breakfast Status": record.breakfastStatus === "included" ? "Included" : "Payment Required",
+      "Payment Status": paymentStatus,
+      "Extra Guests": record.extraGuests || 0,
+      "FO Override": record.statusOverride ? "Yes" : "No"
+    };
+  });
 
   const fileName = customFilename || `breakfast-report-${todayKey()}.xlsx`;
   writeWorkbook(rows, fileName, "Breakfast Report");
-}
-
-export function exportAccountingReport(paymentList, customFilename = "") {
-  const rows = paymentList.map((record) => ({
-    Time: record.timestamp
-      ? new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      : "",
-    "Room / Apartment": record.displayLocation || "-",
-    Guest: record.guestName || "-",
-    Table: record.tableNumber || "-",
-    "Guest Type": record.guestType || "Hotel",
-    Reason: record.reason || "-",
-    "Extra Guests": record.extraGuests || "",
-    "Guests Charged": record.chargeableGuests ?? "",
-    "Unit Price (AED)": record.unitPriceAed ?? "",
-    "Amount (AED)": record.amountAed ?? "",
-    Paid: record.paid ? "Yes" : "No",
-    "Paid At": record.paidAt
-      ? new Date(record.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      : ""
-  }));
-
-  const fileName = customFilename || `breakfast-accounting-${todayKey()}.xlsx`;
-  writeWorkbook(rows, fileName, "Accounting");
 }

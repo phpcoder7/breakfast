@@ -29,8 +29,6 @@ import {
 } from "../js/checkin.js";
 import {
   requiresPayment,
-  chargeableGuests,
-  amountAed,
   syncPaymentList,
   markPaymentPaid
 } from "../js/payment.js";
@@ -260,8 +258,6 @@ test("checkin: entitlement exceeded calculation", () => {
   assert.equal(checkin.entitlementExceeded, true);
   assert.equal(checkin.extraGuests, 2);
   assert.equal(requiresPayment(checkin), true);
-  assert.equal(chargeableGuests(checkin), 2);
-  assert.equal(amountAed(checkin), 300); // 2 * 150 AED
 });
 
 test("checkin: late arrivals handling and table sharing", () => {
@@ -295,8 +291,6 @@ test("checkin: walk-in and apartment check-ins", () => {
   });
   assert.equal(walkIn.guestType, GUEST_TYPES.WALK_IN);
   assert.equal(requiresPayment(walkIn), true);
-  assert.equal(chargeableGuests(walkIn), 2);
-  assert.equal(amountAed(walkIn), 300); // 2 * 150 AED
 
   const apt = createApartmentCheckIn({
     roomNumber: "Apt 501",
@@ -307,8 +301,6 @@ test("checkin: walk-in and apartment check-ins", () => {
   });
   assert.equal(apt.guestType, GUEST_TYPES.APARTMENT);
   assert.equal(requiresPayment(apt), true);
-  assert.equal(chargeableGuests(apt), 2);
-  assert.equal(amountAed(apt), 240); // 2 * 120 AED
 });
 
 // 5. PAYMENT QUEUE & STORE TRANSACTION TESTS
@@ -324,7 +316,6 @@ test("payment: syncPaymentList and markPaymentPaid", () => {
   let payments = syncPaymentList(checkIns);
   assert.equal(payments.length, 1);
   assert.equal(payments[0].paid, false);
-  assert.equal(payments[0].amountAed, 150);
 
   checkIns = markPaymentPaid(checkIns, walkIn.id);
   payments = syncPaymentList(checkIns);
