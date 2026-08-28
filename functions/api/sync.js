@@ -17,7 +17,7 @@ export async function onRequestOptions() {
 
 /**
  * GET /api/sync?brand=KCA&date=2026-08-28&since=...
- * Returns incremental check-in events and active table occupancy
+ * Returns incremental check-in events, active table occupancy, and shared guest roster
  */
 export async function onRequestGet({ request, env }) {
   try {
@@ -156,6 +156,28 @@ export async function onRequestGet({ request, env }) {
     const paymentsStmt = db.prepare(paymentsSql).bind(...paymentParams);
     const { results: payments } = await paymentsStmt.all();
 
+    // 4. Fetch guest roster (Today's uploaded guest list shared across tablets/devices)
+    let roster = null;
+    try {
+      const rosterStmt = db
+        .prepare("SELECT guest_count, roster_data, file_names, files_loaded, updated_at FROM guest_rosters WHERE brand = ? AND service_date = ?")
+        .bind(brand, serviceDate);
+      const rosterRow = await rosterStmt.first();
+
+      if (rosterRow && rosterRow.roster_data) {
+        roster = {
+          guestCount: rosterRow.guest_count || 0,
+          guests: JSON.parse(rosterRow.roster_data || "[]"),
+          fileNames: JSON.parse(rosterRow.file_names || "{}"),
+          filesLoaded: JSON.parse(rosterRow.files_loaded || "{}"),
+          updatedAt: rosterRow.updated_at
+        };
+      }
+    } catch (rosterErr) {
+      // Non-fatal if table doesn't exist yet before migration
+      console.warn("Guest roster fetch notice:", rosterErr);
+    }
+
     return jsonResponse({
       success: true,
       brand,
@@ -164,7 +186,8 @@ export async function onRequestGet({ request, env }) {
       checkins: checkins || [],
       payments: payments || [],
       occupiedTables,
-      activeOccupantsCount: (activeOccupants || []).length
+      activeOccupantsCount: (activeOccupants || []).length,
+      roster
     });
   } catch (error) {
     return jsonResponse({ error: error.message || "Sync GET failed" }, 500);
@@ -173,8 +196,8 @@ export async function onRequestGet({ request, env }) {
 
 /**
  * POST /api/sync
- * Pushes mutations (check-ins, check-outs, payment marks, table changes) from client outbox
- * Body: { brand, serviceDate, deviceId, mutations: [ { type: 'CHECKIN'|'CHECKOUT'|'PAYMENT'|'TABLE_CHANGE', data: {...} } ] }
+ * Pushes mutations (check-ins, check-outs, payment marks, table changes, guest roster) from client outbox
+ * Body: { brand, serviceDate, deviceId, mutations: [...], roster: { guests, fileNames, filesLoaded } }
  */
 export async function onRequestPost({ request, env }) {
   try {
@@ -188,6 +211,7 @@ export async function onRequestPost({ request, env }) {
     const serviceDate = String(payload.serviceDate || "").trim();
     const deviceId = String(payload.deviceId || "unknown_device").trim();
     const mutations = Array.isArray(payload.mutations) ? payload.mutations : [];
+    const roster = payload.roster;
 
     if (!brand || !serviceDate) {
       return jsonResponse({ error: "brand and serviceDate are required." }, 400);
@@ -205,6 +229,42 @@ export async function onRequestPost({ request, env }) {
       )
       .bind(sessionId, brand, serviceDate, nowIso, nowIso)
       .run();
+
+    // 1. If roster is provided, persist to guest_rosters table
+    if (roster && Array.isArray(roster.guests) && roster.guests.length > 0) {
+      try {
+        const guestCount = roster.guests.length;
+        const rosterDataJson = JSON.stringify(roster.guests);
+        const fileNamesJson = JSON.stringify(roster.fileNames || {});
+        const filesLoadedJson = JSON.stringify(roster.filesLoaded || {});
+
+        await db
+          .prepare(
+            `INSERT INTO guest_rosters (id, brand, service_date, guest_count, roster_data, file_names, files_loaded, updated_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(brand, service_date) DO UPDATE SET
+               guest_count = excluded.guest_count,
+               roster_data = excluded.roster_data,
+               file_names = excluded.file_names,
+               files_loaded = excluded.files_loaded,
+               updated_at = excluded.updated_at`
+          )
+          .bind(
+            sessionId,
+            brand,
+            serviceDate,
+            guestCount,
+            rosterDataJson,
+            fileNamesJson,
+            filesLoadedJson,
+            nowIso,
+            nowIso
+          )
+          .run();
+      } catch (saveRosterErr) {
+        console.warn("Could not save guest roster to D1:", saveRosterErr);
+      }
+    }
 
     const statements = [];
 

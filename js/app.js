@@ -35,6 +35,7 @@ import {
   addTableToCloud,
   deleteTableFromCloud,
   getTablesForUser,
+  isValidTableNumber,
   syncTablesFromCloud,
   updateTableInCloud
 } from "./tables.js";
@@ -381,6 +382,25 @@ class BreakfastApp {
       }
     }
 
+    // Shared Guest Roster Sync across mobile/tablets
+    if (remoteData.roster && Array.isArray(remoteData.roster.guests) && remoteData.roster.guests.length > 0) {
+      const hasLocalGuests = Array.isArray(this.state.guests) && this.state.guests.length > 0;
+      if (!hasLocalGuests || this.state.guests.length !== remoteData.roster.guests.length) {
+        this.state.guests = remoteData.roster.guests;
+        this.state.fileNames = remoteData.roster.fileNames || this.state.fileNames;
+        this.state.filesLoaded = remoteData.roster.filesLoaded || {
+          mealPlan: Boolean(this.state.fileNames.mealPlan),
+          packageForecast: Boolean(this.state.fileNames.packageForecast)
+        };
+        globalSearchIndex.buildIndex(this.state.guests);
+        this.persistState();
+        stateChanged = true;
+        if (!hasLocalGuests) {
+          this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests from cloud sync. Ready for search & check-in.`, "success");
+        }
+      }
+    }
+
     if (stateChanged) {
       this.state.checkIns = Array.from(existingMap.values()).sort((a, b) =>
         String(b.timestamp).localeCompare(String(a.timestamp))
@@ -425,6 +445,7 @@ class BreakfastApp {
       }
 
       this.persistState();
+      this.realtimeSync?.syncRoster(this.state.guests, this.state.fileNames, this.state.filesLoaded);
       this.refreshUi();
       this.focusSearch();
     } catch (error) {
@@ -597,6 +618,25 @@ class BreakfastApp {
     });
   }
 
+  async ensureValidTable(tableNumber) {
+    const brand = getActiveBrand();
+    if (isValidTableNumber(brand, tableNumber)) {
+      return true;
+    }
+
+    const validTables = getTablesForUser(brand);
+    const maxHint = validTables.length > 0 ? ` (Registered tables: 1-${validTables.length})` : "";
+    const confirmed = await this.ui.promptConfirm({
+      title: `Table ${tableNumber} Not In Floor Plan`,
+      message: `Table "${tableNumber}" is not in the official ${brand} restaurant table list${maxHint}. Do you want to proceed with this custom/extra table?`,
+      confirmLabel: "Yes, Use Table",
+      cancelLabel: "Fix Table Number",
+      danger: false
+    });
+
+    return Boolean(confirmed);
+  }
+
   async submitHotelCheckIn() {
     if (!this.selectedGuest) {
       this.ui.renderMessage("Select a guest before checking in.", "warning");
@@ -606,6 +646,12 @@ class BreakfastApp {
     const tableNumber = this.ui.elements.tableNumberInput.value.trim();
     if (!tableNumber) {
       this.ui.renderMessage("Table number is required.", "warning");
+      this.ui.elements.tableNumberInput.focus();
+      return;
+    }
+
+    const tableValid = await this.ensureValidTable(tableNumber);
+    if (!tableValid) {
       this.ui.elements.tableNumberInput.focus();
       return;
     }
@@ -745,6 +791,10 @@ class BreakfastApp {
     }
 
     if (normalizeTable(tableNumber) !== normalizeTable(existingCheckIn.tableNumber)) {
+      const tableValid = await this.ensureValidTable(tableNumber);
+      if (!tableValid) {
+        return;
+      }
       const tableAvailable = await this.ensureTableAvailable(
         tableNumber,
         existingCheckIn.id
@@ -818,6 +868,12 @@ class BreakfastApp {
           });
 
     if (!formValues) {
+      this.focusSearch();
+      return;
+    }
+
+    const tableValid = await this.ensureValidTable(formValues.tableNumber);
+    if (!tableValid) {
       this.focusSearch();
       return;
     }
@@ -1054,6 +1110,11 @@ class BreakfastApp {
       return;
     }
 
+    const tableValid = await this.ensureValidTable(nextTable);
+    if (!tableValid) {
+      return;
+    }
+
     const tableAvailable = await this.ensureTableAvailable(nextTable, checkInId);
     if (!tableAvailable) {
       return;
@@ -1111,6 +1172,7 @@ class BreakfastApp {
 
     clearStoredState();
     clearDailyDb(getActiveBrand(), this.state.serviceDate).catch(() => {});
+    this.realtimeSync?.syncRoster([], { mealPlan: "", packageForecast: "" }, { mealPlan: false, packageForecast: false });
     globalSearchIndex.clear();
 
     this.state.checkIns = [];

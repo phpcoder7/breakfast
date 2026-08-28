@@ -67,6 +67,40 @@ export class RealtimeSyncEngine {
     }
   }
 
+  async syncRoster(guests, fileNames = {}, filesLoaded = {}) {
+    if (!navigator.onLine || !Array.isArray(guests) || guests.length === 0) return;
+    try {
+      const brand = this.getBrand();
+      const serviceDate = this.getServiceDate();
+      if (!brand || !serviceDate) return;
+
+      const token = getAuthToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const payload = {
+        brand,
+        serviceDate,
+        deviceId: this.deviceId,
+        roster: {
+          guests,
+          fileNames,
+          filesLoaded
+        }
+      };
+
+      await fetch("/api/sync", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.warn("Roster cloud sync notice:", err);
+    }
+  }
+
   async triggerSync() {
     if (this.isSyncing || !navigator.onLine) return;
     this.isSyncing = true;
@@ -147,12 +181,13 @@ export class RealtimeSyncEngine {
       if (result.serverTime) {
         this.lastSyncTimestamp = result.serverTime;
       }
-      // Notify application of remote checkins and live table occupancy
+      // Notify application of remote checkins, live table occupancy, and guest roster
       this.onRemoteUpdate({
         checkins: result.checkins || [],
         payments: result.payments || [],
         occupiedTables: result.occupiedTables || {},
-        activeOccupantsCount: result.activeOccupantsCount || 0
+        activeOccupantsCount: result.activeOccupantsCount || 0,
+        roster: result.roster || null
       });
     }
   }

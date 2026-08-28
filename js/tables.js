@@ -66,6 +66,16 @@ export function getTablesForUser(brandOrUser) {
 }
 
 /**
+ * Validates whether a table number exists in the hotel brand configuration
+ */
+export function isValidTableNumber(brandOrUser, tableNumber) {
+  const normalized = String(tableNumber || "").trim().toUpperCase();
+  if (!normalized) return false;
+  const validTables = getTablesForUser(brandOrUser);
+  return validTables.some((t) => String(t).trim().toUpperCase() === normalized);
+}
+
+/**
  * Asynchronously synchronizes tables from Cloudflare D1 with local cache
  */
 export async function syncTablesFromCloud(brand = "") {

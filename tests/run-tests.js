@@ -32,7 +32,7 @@ import {
   syncPaymentList,
   markPaymentPaid
 } from "../js/payment.js";
-import { getTablesForUser, parseTableList } from "../js/tables.js";
+import { getTablesForUser, isValidTableNumber, parseTableList } from "../js/tables.js";
 import { canManageBrand, normalizeUsername } from "../js/auth.js";
 
 import {
@@ -362,6 +362,13 @@ test("tables: brand table configuration returns correct counts", () => {
 
   const ktbTables = getTablesForUser("KTB");
   assert.equal(ktbTables.length > 20, true);
+
+  // Table validation tests
+  assert.equal(isValidTableNumber("KCA", "1"), true);
+  assert.equal(isValidTableNumber("KCA", "90"), true);
+  assert.equal(isValidTableNumber("KCA", "99"), false);
+  assert.equal(isValidTableNumber("KCA", "100"), false);
+  assert.equal(isValidTableNumber("KCA", ""), false);
 });
 
 test("auth: normalizeUsername and role permissions", () => {
