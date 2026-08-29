@@ -334,6 +334,10 @@ export class BreakfastUI {
     this.recentRooms = [];
     this._lastCheckIns = [];
     this._lastPayments = [];
+    this._lastGuests = [];
+    this._renderedTablesKey = "";
+    this._lastRenderedCheckInHtml = "";
+    this._lastRenderedPaymentHtml = "";
     this.elements = {
       mealPlanFile: document.querySelector("#mealPlanFile"),
       packageForecastFile: document.querySelector("#packageForecastFile"),
@@ -764,7 +768,10 @@ export class BreakfastUI {
     }
 
     if (!records.length) {
-      this.elements.checkinTableBody.innerHTML = emptyCardsMarkup("No check-ins recorded yet.");
+      if (this._lastRenderedCheckInHtml !== "__empty__") {
+        this.elements.checkinTableBody.innerHTML = emptyCardsMarkup("No check-ins recorded yet.");
+        this._lastRenderedCheckInHtml = "__empty__";
+      }
       return;
     }
 
@@ -789,9 +796,14 @@ export class BreakfastUI {
         return String(b.timestamp || "").localeCompare(String(a.timestamp || ""));
       });
 
-    this.elements.checkinTableBody.innerHTML = filtered.length
+    const newHtml = filtered.length
       ? filtered.map((record) => checkInCardMarkup(record)).join("")
       : emptyCardsMarkup("No matching check-ins.");
+
+    if (this._lastRenderedCheckInHtml !== newHtml) {
+      this._lastRenderedCheckInHtml = newHtml;
+      this.elements.checkinTableBody.innerHTML = newHtml;
+    }
   }
 
   renderPayments(records, guests = this._lastGuests || []) {
@@ -799,9 +811,14 @@ export class BreakfastUI {
     if (guests) {
       this._lastGuests = guests;
     }
-    this.elements.paymentTableBody.innerHTML = records.length
+    const newHtml = records.length
       ? records.map((record) => paymentCardMarkup(record)).join("")
       : emptyCardsMarkup("No payment items queued.");
+
+    if (this._lastRenderedPaymentHtml !== newHtml) {
+      this._lastRenderedPaymentHtml = newHtml;
+      this.elements.paymentTableBody.innerHTML = newHtml;
+    }
     this.updateStatistics(this._lastCheckIns || [], records, this._lastGuests || []);
   }
 
@@ -812,6 +829,7 @@ export class BreakfastUI {
 
     if (!tableNumbers.length) {
       this.elements.tablesGrid.innerHTML = emptyCardsMarkup("No restaurant tables configured for this property.");
+      this._renderedTablesKey = "";
       if (this.elements.tablesAvailableCount) {
         this.elements.tablesAvailableCount.textContent = "0";
       }
@@ -837,22 +855,63 @@ export class BreakfastUI {
 
     let available = 0;
     let occupied = 0;
-    this.elements.tablesGrid.innerHTML = tableNumbers
-      .map((tableNumber) => {
+
+    const tablesKey = tableNumbers.join(",");
+    const existingButtons = this.elements.tablesGrid.querySelectorAll("button[data-table-number]");
+
+    // If grid structure matches table numbers list, perform in-place micro-DOM patch
+    if (this._renderedTablesKey === tablesKey && existingButtons.length === tableNumbers.length) {
+      existingButtons.forEach((btn) => {
+        const tableNumber = btn.dataset.tableNumber;
         const occupants = activeByTable.get(normalizeTable(tableNumber)) || [];
-        if (occupants.length) {
+        const isOccupied = occupants.length > 0;
+        if (isOccupied) {
           occupied += 1;
         } else {
           available += 1;
         }
-        return tableCardMarkup(tableNumber, occupants);
-      })
-      .join("");
 
-    if (this.elements.tablesAvailableCount) {
+        const partyText = isOccupied
+          ? occupants.length === 1
+            ? "1 party"
+            : `${occupants.length} parties`
+          : "Free";
+        const statusText = isOccupied ? "Occupied" : "Available";
+        const targetClass = isOccupied
+          ? "card-enter flex min-h-[88px] flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition active:scale-[0.97] border-red-100 bg-gradient-to-br from-red-50 to-white text-danger"
+          : "card-enter flex min-h-[88px] flex-col items-center justify-center gap-1 rounded-2xl border p-3 text-center transition active:scale-[0.97] border-green-100 bg-gradient-to-br from-green-50 to-white text-success";
+
+        if (btn.dataset.tableOccupied !== (isOccupied ? "true" : "false")) {
+          btn.dataset.tableOccupied = isOccupied ? "true" : "false";
+          btn.className = targetClass;
+        }
+
+        const spans = btn.querySelectorAll("span");
+        if (spans.length >= 3) {
+          if (spans[1].textContent !== statusText) spans[1].textContent = statusText;
+          if (spans[2].textContent !== partyText) spans[2].textContent = partyText;
+        }
+      });
+    } else {
+      // Full render on configuration change
+      this._renderedTablesKey = tablesKey;
+      this.elements.tablesGrid.innerHTML = tableNumbers
+        .map((tableNumber) => {
+          const occupants = activeByTable.get(normalizeTable(tableNumber)) || [];
+          if (occupants.length) {
+            occupied += 1;
+          } else {
+            available += 1;
+          }
+          return tableCardMarkup(tableNumber, occupants);
+        })
+        .join("");
+    }
+
+    if (this.elements.tablesAvailableCount && this.elements.tablesAvailableCount.textContent !== String(available)) {
       this.elements.tablesAvailableCount.textContent = String(available);
     }
-    if (this.elements.tablesOccupiedCount) {
+    if (this.elements.tablesOccupiedCount && this.elements.tablesOccupiedCount.textContent !== String(occupied)) {
       this.elements.tablesOccupiedCount.textContent = String(occupied);
     }
   }

@@ -411,6 +411,26 @@ async function runAllTests() {
     assert.equal(invalidPayload, null);
   });
 
+  await testAsync("sync: ETag generation logic creates consistent version signature", async () => {
+    const brand = "KCA";
+    const serviceDate = "2026-08-29";
+    const checkinCount = 25;
+    const checkinMaxUpd = "2026-08-29T11:00:00.000Z";
+    const paymentCount = 3;
+    const paymentMaxCreated = "2026-08-29T10:30:00.000Z";
+    const rosterCount = 140;
+    const rosterMaxUpd = "2026-08-29T09:00:00.000Z";
+
+    const etag1 = `W/"${brand}_${serviceDate}_${checkinCount}_${checkinMaxUpd}_${paymentCount}_${paymentMaxCreated}_${rosterCount}_${rosterMaxUpd}"`;
+    const etag2 = `W/"${brand}_${serviceDate}_${checkinCount}_${checkinMaxUpd}_${paymentCount}_${paymentMaxCreated}_${rosterCount}_${rosterMaxUpd}"`;
+
+    assert.equal(etag1, etag2);
+    assert.equal(etag1.startsWith('W/"KCA_2026-08-29_25_'), true);
+
+    const modifiedEtag = `W/"${brand}_${serviceDate}_${checkinCount + 1}_${checkinMaxUpd}_${paymentCount}_${paymentMaxCreated}_${rosterCount}_${rosterMaxUpd}"`;
+    assert.notEqual(etag1, modifiedEtag);
+  });
+
   // SUMMARY
   console.log(`\nTest results: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {

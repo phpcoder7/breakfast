@@ -10,7 +10,7 @@ export async function onRequestOptions() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match"
     }
   });
 }
@@ -101,6 +101,47 @@ export async function onRequestGet({ request, env }) {
       console.warn("Auto-backfill notice:", backfillErr);
     }
 
+    // Quick signature check for ETag calculation (Zero-Bloat HTTP 304 Fast Path)
+    const metaCheckinsStmt = db
+      .prepare("SELECT count(*) as count, max(updated_at) as max_upd, max(timestamp) as max_ts FROM checkin_events WHERE brand = ? AND service_date = ?")
+      .bind(brand, serviceDate);
+    const metaPaymentsStmt = db
+      .prepare("SELECT count(*) as count, max(created_at) as max_created FROM payment_events WHERE brand = ? AND service_date = ?")
+      .bind(brand, serviceDate);
+    const metaRosterStmt = db
+      .prepare("SELECT guest_count, updated_at FROM guest_rosters WHERE brand = ? AND service_date = ?")
+      .bind(brand, serviceDate);
+
+    const [checkinsMeta, paymentsMeta, rosterMeta] = await Promise.all([
+      metaCheckinsStmt.first().catch(() => null),
+      metaPaymentsStmt.first().catch(() => null),
+      metaRosterStmt.first().catch(() => null)
+    ]);
+
+    const checkinCount = checkinsMeta?.count || 0;
+    const checkinMaxUpd = checkinsMeta?.max_upd || checkinsMeta?.max_ts || "0";
+    const paymentCount = paymentsMeta?.count || 0;
+    const paymentMaxCreated = paymentsMeta?.max_created || "0";
+    const rosterCount = rosterMeta?.guest_count || 0;
+    const rosterMaxUpd = rosterMeta?.updated_at || "0";
+
+    const etag = `W/"${brand}_${serviceDate}_${checkinCount}_${checkinMaxUpd}_${paymentCount}_${paymentMaxCreated}_${rosterCount}_${rosterMaxUpd}"`;
+
+    const ifNoneMatch = request.headers.get("if-none-match");
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          "ETag": etag,
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match",
+          "Access-Control-Expose-Headers": "ETag",
+          "Cache-Control": "no-cache"
+        }
+      });
+    }
+
     // 1. Fetch checkin events for today's session
     const checkinSql = "SELECT * FROM checkin_events WHERE brand = ? AND service_date = ? ORDER BY timestamp DESC";
     const checkinParams = [brand, serviceDate];
@@ -160,17 +201,31 @@ export async function onRequestGet({ request, env }) {
       console.warn("Guest roster fetch notice:", rosterErr);
     }
 
-    return jsonResponse({
-      success: true,
-      brand,
-      serviceDate,
-      serverTime: nowIso,
-      checkins: checkins || [],
-      payments: payments || [],
-      occupiedTables,
-      activeOccupantsCount: (activeOccupants || []).length,
-      roster
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        brand,
+        serviceDate,
+        serverTime: nowIso,
+        checkins: checkins || [],
+        payments: payments || [],
+        occupiedTables,
+        activeOccupantsCount: (activeOccupants || []).length,
+        roster
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "ETag": etag,
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match",
+          "Access-Control-Expose-Headers": "ETag",
+          "Cache-Control": "no-cache"
+        }
+      }
+    );
   } catch (error) {
     return jsonResponse({ error: error.message || "Sync GET failed" }, 500);
   }

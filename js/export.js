@@ -1,22 +1,55 @@
 import { formatTime, todayKey } from "./utils.js";
 
-function ensureXlsx() {
-  if (!window.XLSX) {
-    throw new Error("Excel export library is not available offline.");
+let xlsxLoadingPromise = null;
+
+export async function ensureXlsx() {
+  if (typeof window !== "undefined" && window.XLSX) {
+    return window.XLSX;
   }
 
-  return window.XLSX;
+  if (xlsxLoadingPromise) {
+    return xlsxLoadingPromise;
+  }
+
+  xlsxLoadingPromise = new Promise((resolve, reject) => {
+    if (typeof document === "undefined") {
+      return reject(new Error("DOM environment required for Excel export"));
+    }
+
+    const existing = document.querySelector('script[src*="xlsx.full.min.js"]');
+    if (existing && window.XLSX) {
+      return resolve(window.XLSX);
+    }
+
+    const script = document.createElement("script");
+    script.src = "./vendor/xlsx.full.min.js";
+    script.async = true;
+    script.onload = () => {
+      if (window.XLSX) {
+        resolve(window.XLSX);
+      } else {
+        reject(new Error("Excel export library loaded but XLSX object is undefined."));
+      }
+    };
+    script.onerror = () => {
+      xlsxLoadingPromise = null;
+      reject(new Error("Could not load Excel export library (vendor/xlsx.full.min.js)."));
+    };
+    document.head.appendChild(script);
+  });
+
+  return xlsxLoadingPromise;
 }
 
-function writeWorkbook(rows, fileName, sheetName) {
-  const XLSX = ensureXlsx();
+export async function writeWorkbook(rows, fileName, sheetName) {
+  const XLSX = await ensureXlsx();
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.writeFile(workbook, fileName);
 }
 
-export function exportTodayReport(checkIns, customFilename = "") {
+export async function exportTodayReport(checkIns, customFilename = "") {
   const rows = checkIns.map((record) => {
     const isIncluded = record.breakfastStatus === "included" && !record.entitlementExceeded;
     let paymentStatus = "Included";
@@ -51,5 +84,5 @@ export function exportTodayReport(checkIns, customFilename = "") {
   });
 
   const fileName = customFilename || `breakfast-report-${todayKey()}.xlsx`;
-  writeWorkbook(rows, fileName, "Breakfast Report");
+  await writeWorkbook(rows, fileName, "Breakfast Report");
 }

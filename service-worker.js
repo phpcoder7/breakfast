@@ -1,10 +1,11 @@
-const CACHE_NAME = "breakfast-checkin-v32";
+const CACHE_NAME = "breakfast-checkin-v34";
 
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./style.css",
+  "./dist/style.min.css",
   "./js/app.bundle.js",
   "./vendor/xlsx.full.min.js",
   "./vendor/fontawesome/css/all.min.css",

@@ -4,12 +4,15 @@
   "description": "High-performance digital breakfast check-in system for hotel operations",
   "type": "module",
   "scripts": {
-    "build": "esbuild js/app.js --bundle --format=iife --loader:.txt=text --minify --sourcemap --outfile=js/app.bundle.js",
-    "build:dev": "esbuild js/app.js --bundle --format=iife --loader:.txt=text --sourcemap --outfile=js/app.bundle.js",
+    "build:css": "tailwindcss -c tailwind.config.cjs -i css/input.css -o dist/style.min.css --minify",
+    "build:js": "esbuild js/app.js --bundle --format=iife --loader:.txt=text --minify --sourcemap --outfile=js/app.bundle.js",
+    "build": "npm run build:css && npm run build:js",
+    "build:dev": "npm run build:css && esbuild js/app.js --bundle --format=iife --loader:.txt=text --sourcemap --outfile=js/app.bundle.js",
     "test": "node tests/run-tests.js",
     "test:bundle": "esbuild tests/run-tests.js --bundle --platform=node --loader:.txt=text --outfile=tests/bundle-test.cjs && node tests/bundle-test.cjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^3.4.19"
   }
 }

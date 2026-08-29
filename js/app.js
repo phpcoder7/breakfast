@@ -1200,7 +1200,7 @@ class BreakfastApp {
     }
 
     try {
-      exportTodayReport(this.state.checkIns);
+      await exportTodayReport(this.state.checkIns);
       await this.syncCurrentStateToCloud();
     } catch (error) {
       this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
@@ -1270,9 +1270,10 @@ class BreakfastApp {
     this.ui.renderMessage("Reports downloaded. New day started. Please load XML reports (Meal Plan or Package Forecast).", "success");
   }
 
-  handleExportToday() {
+  async handleExportToday() {
     try {
-      exportTodayReport(this.state.checkIns);
+      this.ui.renderMessage("Preparing Excel report download...", "info");
+      await exportTodayReport(this.state.checkIns);
       this.ui.renderMessage("Today's report exported successfully.", "success");
     } catch (error) {
       this.ui.renderMessage(error.message, "error");
@@ -1355,7 +1356,7 @@ class BreakfastApp {
 
     try {
       const filename = `breakfast-report-${serviceDate}-${brand}.xlsx`;
-      exportTodayReport(reportData.checkIns, filename);
+      await exportTodayReport(reportData.checkIns, filename);
       this.ui.renderMessage(`Downloaded ${filename} successfully.`, "success");
     } catch (error) {
       this.ui.renderMessage(`Export error: ${error.message}`, "error");

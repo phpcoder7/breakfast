@@ -24,6 +24,8 @@ export class RealtimeSyncEngine {
     this.lastSyncTimestamp = null;
     this.deviceId = getDeviceId();
     this._lastSyncedRosterKey = "";
+    this.lastEtag = "";
+    this.lastBrandAndDate = "";
   }
 
   start() {
@@ -180,16 +182,35 @@ export class RealtimeSyncEngine {
   }
 
   async pullRemoteState(brand, serviceDate) {
+    const currentBrandAndDate = `${brand}_${serviceDate}`;
+    if (this.lastBrandAndDate !== currentBrandAndDate) {
+      this.lastBrandAndDate = currentBrandAndDate;
+      this.lastEtag = "";
+    }
+
     const token = getAuthToken();
     const headers = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
+    if (this.lastEtag) {
+      headers["If-None-Match"] = this.lastEtag;
+    }
 
     const url = `/api/sync?brand=${encodeURIComponent(brand)}&date=${encodeURIComponent(serviceDate)}`;
 
     const response = await fetch(url, { headers });
+    if (response.status === 304) {
+      // Fast path: Zero payload parsing & zero DOM diffing needed
+      return;
+    }
+
     if (!response.ok) return;
+
+    const newEtag = response.headers.get("ETag");
+    if (newEtag) {
+      this.lastEtag = newEtag;
+    }
 
     const result = await response.json();
     if (result.success) {

@@ -125,11 +125,9 @@ export function safeJsonParse(value, fallback) {
 
 export function readStoredState(brand = "") {
   try {
-    const key = brand ? `${STORAGE_KEYS.SNAPSHOT}-${brand.toUpperCase()}` : STORAGE_KEYS.SNAPSHOT;
-    let snapshot = localStorage.getItem(key);
-    if (!snapshot && brand) {
-      snapshot = localStorage.getItem(STORAGE_KEYS.SNAPSHOT);
-    }
+    const brandKey = brand ? brand.toUpperCase() : "DEFAULT";
+    const key = `${STORAGE_KEYS.SNAPSHOT}-${brandKey}`;
+    const snapshot = localStorage.getItem(key);
     if (!snapshot) {
       return null;
     }
@@ -148,9 +146,9 @@ export function readStoredState(brand = "") {
 
 export function writeStoredState(state, brand = "") {
   try {
-    const key = brand ? `${STORAGE_KEYS.SNAPSHOT}-${brand.toUpperCase()}` : STORAGE_KEYS.SNAPSHOT;
+    const brandKey = brand ? brand.toUpperCase() : "DEFAULT";
+    const key = `${STORAGE_KEYS.SNAPSHOT}-${brandKey}`;
     localStorage.setItem(key, JSON.stringify(state));
-    localStorage.setItem(STORAGE_KEYS.SNAPSHOT, JSON.stringify(state));
   } catch (error) {
     console.warn("Could not write state to localStorage (quota or privacy setting):", error);
   }
@@ -160,8 +158,12 @@ export function clearStoredState(brand = "") {
   try {
     if (brand) {
       localStorage.removeItem(`${STORAGE_KEYS.SNAPSHOT}-${brand.toUpperCase()}`);
+    } else {
+      localStorage.removeItem(`${STORAGE_KEYS.SNAPSHOT}-KCA`);
+      localStorage.removeItem(`${STORAGE_KEYS.SNAPSHOT}-KTB`);
+      localStorage.removeItem(`${STORAGE_KEYS.SNAPSHOT}-DEFAULT`);
+      localStorage.removeItem(STORAGE_KEYS.SNAPSHOT);
     }
-    localStorage.removeItem(STORAGE_KEYS.SNAPSHOT);
   } catch (error) {
     console.warn("Could not clear stored state:", error);
   }
