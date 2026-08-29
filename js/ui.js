@@ -406,8 +406,8 @@ export class BreakfastUI {
       tableManagerGrid: document.querySelector("#tableManagerGrid"),
       superAdminBrandWrap: document.querySelector("#superAdminBrandWrap"),
       superAdminBrandSelect: document.querySelector("#superAdminBrandSelect"),
-      mobileSuperAdminBrandWrap: document.querySelector("#mobileSuperAdminBrandWrap"),
-      mobileSuperAdminBrandSelect: document.querySelector("#mobileSuperAdminBrandSelect"),
+      mobileToolsToggle: document.querySelector("#mobileToolsToggle"),
+      mobileToolsPanel: document.querySelector("#mobileToolsPanel"),
       mobileToolsBrandRow: document.querySelector("#mobileToolsBrandRow"),
       mobileToolsBrandSelect: document.querySelector("#mobileToolsBrandSelect"),
       syncStatusBadge: document.querySelector("#syncStatusBadge"),
@@ -898,7 +898,40 @@ export class BreakfastUI {
     }
   }
 
+  toggleMobileTools(forceState) {
+    const panel = this.elements.mobileToolsPanel || document.querySelector("#mobileToolsPanel");
+    const toggleBtn = this.elements.mobileToolsToggle || document.querySelector("#mobileToolsToggle");
+    const icon = document.querySelector("#mobileToolsToggleIcon");
+    const text = document.querySelector("#mobileToolsToggleText");
+
+    if (!panel) return;
+
+    const shouldOpen = forceState !== undefined ? Boolean(forceState) : panel.hidden;
+    panel.hidden = !shouldOpen;
+
+    if (toggleBtn) {
+      toggleBtn.setAttribute("aria-expanded", String(shouldOpen));
+      if (shouldOpen) {
+        toggleBtn.className = "inline-flex h-9 min-h-[36px] items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-white shadow-soft transition active:scale-[0.96]";
+      } else {
+        toggleBtn.className = "inline-flex h-9 min-h-[36px] items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white shadow-soft transition active:scale-[0.96] hover:bg-slate-800";
+      }
+    }
+
+    if (icon) {
+      icon.className = shouldOpen ? "fa-solid fa-xmark text-xs" : "fa-solid fa-bars text-xs";
+    }
+    if (text) {
+      text.textContent = shouldOpen ? "Close" : "Tools";
+    }
+  }
+
+  closeMobileTools() {
+    this.toggleMobileTools(false);
+  }
+
   activateTab(targetName) {
+    this.closeMobileTools();
     this.elements.tabButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.tabTarget === targetName);
     });

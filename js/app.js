@@ -253,23 +253,43 @@ class BreakfastApp {
       button.addEventListener("click", () => this.ui.activateTab(button.dataset.tabTarget));
     });
 
-    document.querySelector("#mobileToolsToggle")?.addEventListener("click", () => {
-      const panel = document.querySelector("#mobileToolsPanel");
-      if (panel) {
-        panel.hidden = !panel.hidden;
-      }
+    elements.mobileToolsToggle?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.ui.toggleMobileTools();
     });
 
     document.querySelector('[data-mobile-view="search"]')?.addEventListener("click", () => {
+      this.ui.closeMobileTools();
       this.ui.setMobileView("search");
       this.focusSearch();
     });
 
-    document.querySelector("#mobileNewDayButton")?.addEventListener("click", () => this.handleNewDay());
+    document.querySelector("#mobileNewDayButton")?.addEventListener("click", () => {
+      this.ui.closeMobileTools();
+      this.handleNewDay();
+    });
     document.querySelector("#mobileLogoutButton")?.addEventListener("click", () => {
+      this.ui.closeMobileTools();
       document.querySelector("#logoutButton")?.click();
     });
-    document.querySelector("#mobileExportTodayButton")?.addEventListener("click", () => this.handleExportToday());
+    document.querySelector("#mobileExportTodayButton")?.addEventListener("click", () => {
+      this.ui.closeMobileTools();
+      this.handleExportToday();
+    });
+    document.querySelector("#mobileReportsDashboardButton")?.addEventListener("click", () => {
+      this.ui.closeMobileTools();
+      this.handleOpenReportsDashboard();
+    });
+
+    // Close mobile tools when clicking outside
+    document.addEventListener("click", (event) => {
+      const panel = document.querySelector("#mobileToolsPanel");
+      const toggle = document.querySelector("#mobileToolsToggle");
+      if (panel && !panel.hidden && toggle && !toggle.contains(event.target) && !panel.contains(event.target)) {
+        this.ui.closeMobileTools();
+      }
+    });
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -1582,9 +1602,6 @@ class BreakfastApp {
     if (this.ui.elements.superAdminBrandSelect) {
       this.ui.elements.superAdminBrandSelect.value = selectedBrand;
     }
-    if (this.ui.elements.mobileSuperAdminBrandSelect) {
-      this.ui.elements.mobileSuperAdminBrandSelect.value = selectedBrand;
-    }
     if (this.ui.elements.mobileToolsBrandSelect) {
       this.ui.elements.mobileToolsBrandSelect.value = selectedBrand;
     }
@@ -1666,8 +1683,6 @@ function showAppScreen() {
   const mobileUserBadge = document.querySelector("#mobileUserBadge");
   const superAdminBrandWrap = document.querySelector("#superAdminBrandWrap");
   const superAdminBrandSelect = document.querySelector("#superAdminBrandSelect");
-  const mobileSuperAdminBrandWrap = document.querySelector("#mobileSuperAdminBrandWrap");
-  const mobileSuperAdminBrandSelect = document.querySelector("#mobileSuperAdminBrandSelect");
   const mobileToolsBrandRow = document.querySelector("#mobileToolsBrandRow");
   const mobileToolsBrandSelect = document.querySelector("#mobileToolsBrandSelect");
   const currentUser = getCurrentUser();
@@ -1676,6 +1691,7 @@ function showAppScreen() {
 
   const userRoleText = isSuperAdmin() ? "Super Admin" : "Host";
   const userLabel = `${currentUser} (${userRoleText})`;
+  const mobileUserLabel = isSuperAdmin() ? "Super Admin" : currentUser;
 
   if (loginScreen) {
     loginScreen.hidden = true;
@@ -1687,20 +1703,15 @@ function showAppScreen() {
     userBadge.textContent = userLabel;
   }
   if (mobileUserBadge) {
-    mobileUserBadge.textContent = userLabel;
+    mobileUserBadge.textContent = mobileUserLabel;
   }
 
-  // Super Admin Hotel Switcher display (Desktop & Mobile)
+  // Super Admin Hotel Switcher display (Desktop & Mobile Tools Menu)
   if (isSuperAdmin()) {
     if (superAdminBrandWrap && superAdminBrandSelect) {
       superAdminBrandWrap.classList.remove("hidden");
       superAdminBrandWrap.classList.add("inline-flex");
       superAdminBrandSelect.value = activeBrand;
-    }
-    if (mobileSuperAdminBrandWrap && mobileSuperAdminBrandSelect) {
-      mobileSuperAdminBrandWrap.classList.remove("hidden");
-      mobileSuperAdminBrandWrap.classList.add("inline-flex");
-      mobileSuperAdminBrandSelect.value = activeBrand;
     }
     if (mobileToolsBrandRow && mobileToolsBrandSelect) {
       mobileToolsBrandRow.classList.remove("hidden");
@@ -1711,10 +1722,6 @@ function showAppScreen() {
     if (superAdminBrandWrap) {
       superAdminBrandWrap.classList.add("hidden");
       superAdminBrandWrap.classList.remove("inline-flex");
-    }
-    if (mobileSuperAdminBrandWrap) {
-      mobileSuperAdminBrandWrap.classList.add("hidden");
-      mobileSuperAdminBrandWrap.classList.remove("inline-flex");
     }
     if (mobileToolsBrandRow) {
       mobileToolsBrandRow.classList.add("hidden");
