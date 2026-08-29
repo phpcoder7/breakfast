@@ -67,13 +67,19 @@ class BreakfastApp {
     this.realtimeSync = new RealtimeSyncEngine({
       getBrand: () => getActiveBrand(),
       getServiceDate: () => this.state.serviceDate || todayKey(),
+      getRoster: () => ({
+        guests: this.state.guests,
+        fileNames: this.state.fileNames,
+        filesLoaded: this.state.filesLoaded
+      }),
       onRemoteUpdate: (data) => this.handleRemoteSyncUpdate(data),
       onSyncStatusChange: (status) => this.ui.setSyncStatus(status)
     });
   }
 
   createInitialState() {
-    const stored = readStoredState();
+    const brand = getActiveBrand();
+    const stored = readStoredState(brand);
     if (stored) {
       return {
         ...stored,
@@ -85,23 +91,23 @@ class BreakfastApp {
     }
 
     return {
-        guests: [],
-        checkIns: [],
-        paymentList: [],
-        filesLoaded: {
-          mealPlan: false,
-          packageForecast: false
-        },
-        fileNames: {
-          mealPlan: "",
-          packageForecast: ""
-        },
-        rawData: {
-          mealPlan: [],
-          packageForecast: []
-        },
-        serviceDate: todayKey()
-      };
+      guests: [],
+      checkIns: [],
+      paymentList: [],
+      filesLoaded: {
+        mealPlan: false,
+        packageForecast: false
+      },
+      fileNames: {
+        mealPlan: "",
+        packageForecast: ""
+      },
+      rawData: {
+        mealPlan: [],
+        packageForecast: []
+      },
+      serviceDate: todayKey()
+    };
   }
 
   init() {
@@ -179,6 +185,8 @@ class BreakfastApp {
     elements.tableManagerDoneButton?.addEventListener("click", () => this.ui.closeTableManager());
     elements.addTableForm?.addEventListener("submit", (e) => this.handleAddTableSubmit(e));
     elements.superAdminBrandSelect?.addEventListener("change", (e) => this.handleSuperAdminBrandChange(e));
+    elements.mobileSuperAdminBrandSelect?.addEventListener("change", (e) => this.handleSuperAdminBrandChange(e));
+    elements.mobileToolsBrandSelect?.addEventListener("change", (e) => this.handleSuperAdminBrandChange(e));
     elements.paymentTableBody?.addEventListener("click", (event) => {
       const editTableButton = event.target.closest("[data-edit-table-id]");
       if (editTableButton) {
@@ -288,7 +296,7 @@ class BreakfastApp {
   }
 
   persistState() {
-    writeStoredState(this.state);
+    writeStoredState(this.state, getActiveBrand());
   }
 
   refreshUi() {
@@ -1175,7 +1183,7 @@ class BreakfastApp {
       return;
     }
 
-    clearStoredState();
+    clearStoredState(getActiveBrand());
     clearDailyDb(getActiveBrand(), this.state.serviceDate).catch(() => {});
     this.realtimeSync?.syncRoster([], { mealPlan: "", packageForecast: "" }, { mealPlan: false, packageForecast: false });
     globalSearchIndex.clear();
@@ -1561,10 +1569,33 @@ class BreakfastApp {
   }
 
   handleSuperAdminBrandChange(event) {
-    const selectedBrand = event.target.value;
+    const selectedBrand = String(event.target.value || "").toUpperCase();
+    if (selectedBrand !== "KCA" && selectedBrand !== "KTB") return;
     setActiveBrand(selectedBrand);
     applyBrandLogo(selectedBrand);
-    this.ui.renderMessage(`Super Admin switched to ${selectedBrand} engine.`, "info");
+
+    // Sync all brand switcher select elements
+    if (this.ui.elements.superAdminBrandSelect) {
+      this.ui.elements.superAdminBrandSelect.value = selectedBrand;
+    }
+    if (this.ui.elements.mobileSuperAdminBrandSelect) {
+      this.ui.elements.mobileSuperAdminBrandSelect.value = selectedBrand;
+    }
+    if (this.ui.elements.mobileToolsBrandSelect) {
+      this.ui.elements.mobileToolsBrandSelect.value = selectedBrand;
+    }
+
+    // Switch to isolated state for selected brand
+    this.state = this.createInitialState();
+    this.selectedGuest = null;
+    this.searchState.results = [];
+    this.searchState.activeIndex = -1;
+    globalSearchIndex.clear();
+    if (this.state.guests && this.state.guests.length) {
+      globalSearchIndex.buildIndex(this.state.guests);
+    }
+
+    this.ui.renderMessage(`Switched to ${selectedBrand} Hotel engine.`, "info");
     this.realtimeSync?.triggerSync();
     syncTablesFromCloud(selectedBrand).then(() => {
       this.refreshUi();
@@ -1631,6 +1662,10 @@ function showAppScreen() {
   const mobileUserBadge = document.querySelector("#mobileUserBadge");
   const superAdminBrandWrap = document.querySelector("#superAdminBrandWrap");
   const superAdminBrandSelect = document.querySelector("#superAdminBrandSelect");
+  const mobileSuperAdminBrandWrap = document.querySelector("#mobileSuperAdminBrandWrap");
+  const mobileSuperAdminBrandSelect = document.querySelector("#mobileSuperAdminBrandSelect");
+  const mobileToolsBrandRow = document.querySelector("#mobileToolsBrandRow");
+  const mobileToolsBrandSelect = document.querySelector("#mobileToolsBrandSelect");
   const currentUser = getCurrentUser();
   const profile = getCurrentUserProfile();
   const activeBrand = getActiveBrand();
@@ -1651,15 +1686,35 @@ function showAppScreen() {
     mobileUserBadge.textContent = userLabel;
   }
 
-  // Super Admin Hotel Switcher display
-  if (superAdminBrandWrap && superAdminBrandSelect) {
-    if (isSuperAdmin()) {
+  // Super Admin Hotel Switcher display (Desktop & Mobile)
+  if (isSuperAdmin()) {
+    if (superAdminBrandWrap && superAdminBrandSelect) {
       superAdminBrandWrap.classList.remove("hidden");
       superAdminBrandWrap.classList.add("inline-flex");
       superAdminBrandSelect.value = activeBrand;
-    } else {
+    }
+    if (mobileSuperAdminBrandWrap && mobileSuperAdminBrandSelect) {
+      mobileSuperAdminBrandWrap.classList.remove("hidden");
+      mobileSuperAdminBrandWrap.classList.add("inline-flex");
+      mobileSuperAdminBrandSelect.value = activeBrand;
+    }
+    if (mobileToolsBrandRow && mobileToolsBrandSelect) {
+      mobileToolsBrandRow.classList.remove("hidden");
+      mobileToolsBrandRow.classList.add("flex");
+      mobileToolsBrandSelect.value = activeBrand;
+    }
+  } else {
+    if (superAdminBrandWrap) {
       superAdminBrandWrap.classList.add("hidden");
       superAdminBrandWrap.classList.remove("inline-flex");
+    }
+    if (mobileSuperAdminBrandWrap) {
+      mobileSuperAdminBrandWrap.classList.add("hidden");
+      mobileSuperAdminBrandWrap.classList.remove("inline-flex");
+    }
+    if (mobileToolsBrandRow) {
+      mobileToolsBrandRow.classList.add("hidden");
+      mobileToolsBrandRow.classList.remove("flex");
     }
   }
 

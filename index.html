@@ -147,30 +147,38 @@
               <span>Past Reports</span>
             </button>
 
-            <!-- Super Admin Brand Switcher Dropdown -->
-            <div id="superAdminBrandWrap" class="hidden items-center gap-1.5 rounded-2xl bg-purple-50 px-2.5 py-1 text-xs font-black text-purple-900 border border-purple-200">
-              <i class="fa-solid fa-hotel text-purple-600"></i>
-              <span>Hotel:</span>
-              <select id="superAdminBrandSelect" class="bg-transparent font-black text-purple-900 outline-none cursor-pointer">
-                <option value="KCA">KCA</option>
-                <option value="KTB">KTB</option>
-              </select>
-            </div>
-
-            <span id="syncStatusBadge" class="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-emerald-500" title="Connected & Synced (Live)"></span>
-
-            <span id="currentUserBadge" class="inline-flex h-11 min-h-touch items-center rounded-full bg-primary/10 px-3 text-sm font-bold text-primary"></span>
-
-            <button id="logoutButton" class="inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
-              <i class="fa-solid fa-right-from-bracket"></i>
-              <span>Logout</span>
-            </button>
+          <!-- Super Admin Brand Switcher Dropdown (Desktop) -->
+          <div id="superAdminBrandWrap" class="hidden items-center gap-1.5 rounded-2xl bg-purple-50 px-2.5 py-1 text-xs font-black text-purple-900 border border-purple-200">
+            <i class="fa-solid fa-hotel text-purple-600"></i>
+            <span>Hotel:</span>
+            <select id="superAdminBrandSelect" class="bg-transparent font-black text-purple-900 outline-none cursor-pointer">
+              <option value="KCA">KCA</option>
+              <option value="KTB">KTB</option>
+            </select>
           </div>
 
-          <!-- Phone + tablet: Tools menu -->
-          <span id="mobileSyncStatusBadge" class="inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center rounded-full bg-emerald-500 xl:hidden" title="Connected & Synced (Live)"></span>
-          <span id="mobileUserBadge" class="inline-flex h-10 items-center rounded-full bg-primary/10 px-3 text-xs font-bold text-primary xl:hidden"></span>
-          <button id="mobileToolsToggle" class="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white xl:hidden" type="button">
+          <span id="syncStatusBadge" class="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-emerald-500" title="Connected & Synced (Live)"></span>
+
+          <span id="currentUserBadge" class="inline-flex h-11 min-h-touch items-center rounded-full bg-primary/10 px-3 text-sm font-bold text-primary"></span>
+
+          <button id="logoutButton" class="inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Logout</span>
+          </button>
+        </div>
+
+        <!-- Phone + tablet: Tools menu & Brand Switcher -->
+        <div class="flex items-center gap-1.5 xl:hidden">
+          <div id="mobileSuperAdminBrandWrap" class="hidden items-center gap-1 rounded-xl bg-purple-50 px-2 py-1 text-xs font-black text-purple-900 border border-purple-200">
+            <i class="fa-solid fa-hotel text-purple-600 text-[10px]"></i>
+            <select id="mobileSuperAdminBrandSelect" class="bg-transparent font-black text-purple-900 outline-none cursor-pointer text-xs">
+              <option value="KCA">KCA</option>
+              <option value="KTB">KTB</option>
+            </select>
+          </div>
+          <span id="mobileSyncStatusBadge" class="inline-flex h-2.5 w-2.5 shrink-0 items-center justify-center rounded-full bg-emerald-500" title="Connected & Synced (Live)"></span>
+          <span id="mobileUserBadge" class="inline-flex h-10 items-center rounded-full bg-primary/10 px-2.5 text-xs font-bold text-primary"></span>
+          <button id="mobileToolsToggle" class="inline-flex h-10 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-bold text-white" type="button">
             <i class="fa-solid fa-bars"></i>
             <span>Tools</span>
           </button>
@@ -179,6 +187,13 @@
 
       <!-- Phone + tablet tools panel -->
       <section id="mobileToolsPanel" class="mobile-tools mb-2 shrink-0 rounded-2xl bg-white p-3 shadow-card xl:hidden" hidden>
+        <div id="mobileToolsBrandRow" class="mb-2.5 hidden items-center justify-between rounded-xl bg-purple-50 p-2 text-xs font-black text-purple-900 border border-purple-200">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-hotel text-purple-600"></i> Active Property:</span>
+          <select id="mobileToolsBrandSelect" class="rounded-lg bg-white px-2 py-1 font-black text-purple-900 border border-purple-200 outline-none">
+            <option value="KCA">KCA Hotel</option>
+            <option value="KTB">KTB Hotel</option>
+          </select>
+        </div>
         <div class="mb-3 grid grid-cols-2 gap-2">
           <div id="mobileMealPlanStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Meal Plan: Missing</div>
           <div id="mobilePackageForecastStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Forecast: Missing</div>

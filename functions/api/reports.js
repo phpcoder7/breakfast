@@ -206,6 +206,71 @@ export async function onRequestPost({ request, env }) {
       .bind(reportId, serviceDate, brand, totalCheckins, totalGuests, totalPayments, totalAmountAed, reportDataString)
       .run();
 
+    // Also sync checkIns directly to checkin_events
+    try {
+      if (checkIns.length > 0) {
+        const sessionId = `${brand}_${serviceDate}`;
+        const nowIso = new Date().toISOString();
+        const syncStmts = [];
+        for (const c of checkIns) {
+          const id = c.id || `${brand}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+          syncStmts.push(
+            db
+              .prepare(
+                `INSERT INTO checkin_events (
+                  id, session_id, brand, service_date, room_number, guest_name, table_number,
+                  adults, children, actual_guests, extra_guests, entitlement_exceeded, guest_type,
+                  meal_plan, products, breakfast_status, status_override, checked_out, checked_out_at,
+                  paid, paid_at, device_id, timestamp, updated_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REPORTS_SYNC', ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  room_number = excluded.room_number,
+                  table_number = excluded.table_number,
+                  actual_guests = excluded.actual_guests,
+                  extra_guests = excluded.extra_guests,
+                  entitlement_exceeded = excluded.entitlement_exceeded,
+                  checked_out = excluded.checked_out,
+                  checked_out_at = excluded.checked_out_at,
+                  paid = excluded.paid,
+                  paid_at = excluded.paid_at,
+                  updated_at = excluded.updated_at`
+              )
+              .bind(
+                id,
+                sessionId,
+                brand,
+                serviceDate,
+                c.roomNumber || c.displayLocation || "",
+                c.guestName || "Guest",
+                c.tableNumber || "",
+                Number(c.adults) || 0,
+                Number(c.children) || 0,
+                Number(c.actualGuests) || (Number(c.adults) || 0) + (Number(c.children) || 0) || 1,
+                Number(c.extraGuests) || 0,
+                c.entitlementExceeded ? 1 : 0,
+                c.guestType || "Hotel",
+                c.mealPlan || "",
+                c.products || "",
+                c.breakfastStatus || "included",
+                c.statusOverride ? 1 : 0,
+                c.checkedOut ? 1 : 0,
+                c.checkedOutAt || null,
+                c.paid ? 1 : 0,
+                c.paidAt || null,
+                c.timestamp || nowIso,
+                nowIso,
+                nowIso
+              )
+          );
+        }
+        if (syncStmts.length > 0) {
+          await db.batch(syncStmts);
+        }
+      }
+    } catch (checkinSyncErr) {
+      console.warn("Could not sync checkins to checkin_events from reports:", checkinSyncErr);
+    }
+
     // Enforce 20-day retention prune
     await db.prepare("DELETE FROM daily_reports WHERE service_date < date('now', '-20 days')").run();
 

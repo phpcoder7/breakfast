@@ -38,69 +38,62 @@ export async function onRequestGet({ request, env }) {
     const sessionId = `${brand}_${serviceDate}`;
     const nowIso = new Date().toISOString();
 
-    // 0. Auto-backfill checkin_events from daily_reports if checkin_events is empty
+    // 0. Auto-backfill checkin_events from daily_reports if any checkin is missing
     try {
-      const countStmt = db
-        .prepare("SELECT COUNT(*) as cnt FROM checkin_events WHERE brand = ? AND service_date = ?")
+      const reportStmt = db
+        .prepare("SELECT report_data FROM daily_reports WHERE brand = ? AND service_date = ?")
         .bind(brand, serviceDate);
-      const countRes = await countStmt.first();
+      const reportRow = await reportStmt.first();
 
-      if (!countRes || countRes.cnt === 0) {
-        const reportStmt = db
-          .prepare("SELECT report_data FROM daily_reports WHERE brand = ? AND service_date = ?")
-          .bind(brand, serviceDate);
-        const reportRow = await reportStmt.first();
+      if (reportRow && reportRow.report_data) {
+        const parsed = JSON.parse(reportRow.report_data);
+        const legacyCheckins = Array.isArray(parsed.checkIns) ? parsed.checkIns : [];
 
-        if (reportRow && reportRow.report_data) {
-          const parsed = JSON.parse(reportRow.report_data);
-          const legacyCheckins = Array.isArray(parsed.checkIns) ? parsed.checkIns : [];
+        if (legacyCheckins.length > 0) {
+          const backfillStmts = [];
+          for (const c of legacyCheckins) {
+            const id = c.id || `${brand}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            backfillStmts.push(
+              db
+                .prepare(
+                  `INSERT OR IGNORE INTO checkin_events (
+                    id, session_id, brand, service_date, room_number, guest_name, table_number,
+                    adults, children, actual_guests, extra_guests, entitlement_exceeded, guest_type,
+                    meal_plan, products, breakfast_status, status_override, checked_out, checked_out_at,
+                    paid, paid_at, device_id, timestamp, updated_at, created_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BACKFILL', ?, ?, ?)`
+                )
+                .bind(
+                  id,
+                  sessionId,
+                  brand,
+                  serviceDate,
+                  c.roomNumber || c.displayLocation || "",
+                  c.guestName || "Guest",
+                  c.tableNumber || "",
+                  Number(c.adults) || 0,
+                  Number(c.children) || 0,
+                  Number(c.actualGuests) || (Number(c.adults) || 0) + (Number(c.children) || 0) || 1,
+                  Number(c.extraGuests) || 0,
+                  c.entitlementExceeded ? 1 : 0,
+                  c.guestType || "Hotel",
+                  c.mealPlan || "",
+                  c.products || "",
+                  c.breakfastStatus || "included",
+                  c.statusOverride ? 1 : 0,
+                  c.checkedOut ? 1 : 0,
+                  c.checkedOutAt || null,
+                  c.paid ? 1 : 0,
+                  c.paidAt || null,
+                  c.timestamp || nowIso,
+                  nowIso,
+                  nowIso
+                )
+            );
+          }
 
-          if (legacyCheckins.length > 0) {
-            const backfillStmts = [];
-            for (const c of legacyCheckins) {
-              const id = c.id || `${brand}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-              backfillStmts.push(
-                db
-                  .prepare(
-                    `INSERT OR IGNORE INTO checkin_events (
-                      id, session_id, brand, service_date, room_number, guest_name, table_number,
-                      adults, children, actual_guests, extra_guests, entitlement_exceeded, guest_type,
-                      meal_plan, products, breakfast_status, status_override, checked_out, checked_out_at,
-                      paid, paid_at, device_id, timestamp, updated_at, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BACKFILL', ?, ?, ?)`
-                  )
-                  .bind(
-                    id,
-                    sessionId,
-                    brand,
-                    serviceDate,
-                    c.roomNumber || c.displayLocation || "",
-                    c.guestName || "Guest",
-                    c.tableNumber || "",
-                    Number(c.adults) || 0,
-                    Number(c.children) || 0,
-                    Number(c.actualGuests) || (Number(c.adults) || 0) + (Number(c.children) || 0) || 1,
-                    Number(c.extraGuests) || 0,
-                    c.entitlementExceeded ? 1 : 0,
-                    c.guestType || "Hotel",
-                    c.mealPlan || "",
-                    c.products || "",
-                    c.breakfastStatus || "included",
-                    c.statusOverride ? 1 : 0,
-                    c.checkedOut ? 1 : 0,
-                    c.checkedOutAt || null,
-                    c.paid ? 1 : 0,
-                    c.paidAt || null,
-                    c.timestamp || nowIso,
-                    nowIso,
-                    nowIso
-                  )
-              );
-            }
-
-            if (backfillStmts.length > 0) {
-              await db.batch(backfillStmts);
-            }
+          if (backfillStmts.length > 0) {
+            await db.batch(backfillStmts);
           }
         }
       }

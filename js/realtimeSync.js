@@ -12,9 +12,10 @@ import {
 import { getAuthToken } from "./auth.js";
 
 export class RealtimeSyncEngine {
-  constructor({ getBrand, getServiceDate, onRemoteUpdate, onSyncStatusChange }) {
+  constructor({ getBrand, getServiceDate, getRoster, onRemoteUpdate, onSyncStatusChange }) {
     this.getBrand = getBrand;
     this.getServiceDate = getServiceDate;
+    this.getRoster = getRoster || null;
     this.onRemoteUpdate = onRemoteUpdate || (() => {});
     this.onSyncStatusChange = onSyncStatusChange || (() => {});
     this.pollInterval = 3000; // 3s polling for instantaneous multi-device updates
@@ -22,6 +23,7 @@ export class RealtimeSyncEngine {
     this.isSyncing = false;
     this.lastSyncTimestamp = null;
     this.deviceId = getDeviceId();
+    this._lastSyncedRosterKey = "";
   }
 
   start() {
@@ -36,7 +38,6 @@ export class RealtimeSyncEngine {
     }, this.pollInterval);
 
     window.addEventListener("online", () => {
-      // Immediate flush when online event fires
       this.triggerSync();
     });
     document.addEventListener("visibilitychange", () => {
@@ -90,11 +91,15 @@ export class RealtimeSyncEngine {
         }
       };
 
-      await fetch("/api/sync", {
+      const res = await fetch("/api/sync", {
         method: "POST",
         headers,
         body: JSON.stringify(payload)
       });
+
+      if (res.ok) {
+        this._lastSyncedRosterKey = `${brand}_${serviceDate}_${guests.length}`;
+      }
     } catch (err) {
       console.warn("Roster cloud sync notice:", err);
     }
@@ -117,12 +122,25 @@ export class RealtimeSyncEngine {
       // 1. Push pending outbox mutations
       await this.flushOutbox(brand, serviceDate);
 
-      // 2. Pull latest server mutations & table occupancy
+      // 2. Proactively sync roster if local device has roster loaded and hasn't synced for this brand/date
+      if (this.getRoster) {
+        const localRoster = this.getRoster();
+        const rosterKey = `${brand}_${serviceDate}_${localRoster?.guests?.length || 0}`;
+        if (
+          localRoster &&
+          Array.isArray(localRoster.guests) &&
+          localRoster.guests.length > 0 &&
+          this._lastSyncedRosterKey !== rosterKey
+        ) {
+          await this.syncRoster(localRoster.guests, localRoster.fileNames, localRoster.filesLoaded);
+        }
+      }
+
+      // 3. Pull latest server mutations, live table occupancy, and shared guest roster
       await this.pullRemoteState(brand, serviceDate);
 
       this.onSyncStatusChange({ syncing: false, success: true, timestamp: new Date() });
     } catch (error) {
-      // Offline network error handled gracefully
       this.onSyncStatusChange({ syncing: false, error: error.message || "Offline" });
     } finally {
       this.isSyncing = false;
