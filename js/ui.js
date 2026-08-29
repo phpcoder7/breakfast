@@ -493,27 +493,38 @@ export class BreakfastUI {
       type === "mealPlan"
         ? document.querySelector("#mobileMealPlanStatus")
         : document.querySelector("#mobilePackageForecastStatus");
-    const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
-    const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
+    const label = type === "mealPlan" ? "Meal Plan" : "Forecast";
 
-    const desktopClass = loaded
-      ? "file-status is-loaded inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold"
-      : "file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
-    const mobileClass = loaded
-      ? "file-status is-loaded rounded-xl px-3 py-2 text-center text-[11px] font-bold"
-      : "file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold";
+    const desktopMissingClass =
+      "file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100";
+    const desktopLoadedClass =
+      "file-btn is-loaded inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 text-xs font-bold text-emerald-700 transition active:scale-[0.97] hover:bg-emerald-100";
+
+    const mobileMissingClass =
+      "file-btn is-missing inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100";
+    const mobileLoadedClass =
+      "file-btn is-loaded inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2 text-xs font-bold text-emerald-700 transition active:scale-[0.97] hover:bg-emerald-100";
+
+    const desktopClass = loaded ? desktopLoadedClass : desktopMissingClass;
+    const mobileClass = loaded ? mobileLoadedClass : mobileMissingClass;
+    const iconClass = loaded ? "fa-solid fa-circle-check text-emerald-600" : "fa-solid fa-file-arrow-up text-red-600";
     const text = loaded ? `${label}: Loaded` : `${label}: Missing`;
-    const mobileText = loaded ? `${shortLabel}: Loaded` : `${shortLabel}: Missing`;
+    const title = fileName ? `${label}: ${fileName} (Click to re-upload)` : `Click to upload ${label} XML`;
+
+    const renderBtnContent = (el, iconCls, txt) => {
+      if (!el) return;
+      el.innerHTML = `<i class="${iconCls}"></i><span>${txt}</span>`;
+    };
 
     if (element) {
       element.className = desktopClass;
-      element.textContent = text;
-      element.title = fileName;
+      renderBtnContent(element, iconClass, text);
+      element.title = title;
     }
     if (mobileElement) {
       mobileElement.className = mobileClass;
-      mobileElement.textContent = mobileText;
-      mobileElement.title = fileName;
+      renderBtnContent(mobileElement, iconClass, text);
+      mobileElement.title = title;
     }
   }
 
@@ -523,19 +534,31 @@ export class BreakfastUI {
       type === "mealPlan"
         ? document.querySelector("#mobileMealPlanStatus")
         : document.querySelector("#mobilePackageForecastStatus");
-    const label = type === "mealPlan" ? "Meal Plan" : "Package Forecast";
-    const shortLabel = type === "mealPlan" ? "Meal Plan" : "Forecast";
+    const label = type === "mealPlan" ? "Meal Plan" : "Forecast";
+
+    const desktopLoadingClass =
+      "file-btn is-loading inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 text-xs font-bold text-amber-700 transition active:scale-[0.97] hover:bg-amber-100";
+    const mobileLoadingClass =
+      "file-btn is-loading inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2 text-xs font-bold text-amber-700 transition active:scale-[0.97] hover:bg-amber-100";
+
+    const iconClass = "fa-solid fa-spinner fa-spin text-amber-600";
+    const text = `${label}: Reading...`;
+    const title = fileName ? `Reading ${fileName}...` : `Reading ${label}...`;
+
+    const renderBtnContent = (el, iconCls, txt) => {
+      if (!el) return;
+      el.innerHTML = `<i class="${iconCls}"></i><span>${txt}</span>`;
+    };
 
     if (element) {
-      element.className =
-        "file-status is-loading inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold";
-      element.textContent = `${label}: Reading...`;
-      element.title = fileName;
+      element.className = desktopLoadingClass;
+      renderBtnContent(element, iconClass, text);
+      element.title = title;
     }
     if (mobileElement) {
-      mobileElement.className = "file-status is-loading rounded-xl px-3 py-2 text-center text-[11px] font-bold";
-      mobileElement.textContent = `${shortLabel}: Reading...`;
-      mobileElement.title = fileName;
+      mobileElement.className = mobileLoadingClass;
+      renderBtnContent(mobileElement, iconClass, text);
+      mobileElement.title = title;
     }
   }
 

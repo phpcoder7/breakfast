@@ -93,21 +93,24 @@
         <div class="flex shrink-0 items-center gap-2">
           <!-- Desktop / wide screens only -->
           <div class="header-actions hidden items-center gap-2 xl:flex">
-            <span id="mealPlanStatus" class="file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold">
-              Meal Plan: Missing
-            </span>
-            <span id="packageForecastStatus" class="file-status is-missing inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold">
-              Package Forecast: Missing
-            </span>
-
-            <label for="mealPlanFile" class="inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
-              <i class="fa-solid fa-file-arrow-up text-primary"></i>
-              <span>Meal Plan</span>
+            <label
+              id="mealPlanStatus"
+              for="mealPlanFile"
+              class="file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+              title="Click to upload Meal Plan XML"
+            >
+              <i class="fa-solid fa-file-arrow-up text-red-600"></i>
+              <span>Meal Plan: Missing</span>
             </label>
 
-            <label for="packageForecastFile" class="inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200">
-              <i class="fa-solid fa-file-arrow-up text-primary"></i>
-              <span>Forecast</span>
+            <label
+              id="packageForecastStatus"
+              for="packageForecastFile"
+              class="file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+              title="Click to upload Forecast XML"
+            >
+              <i class="fa-solid fa-file-arrow-up text-red-600"></i>
+              <span>Forecast: Missing</span>
             </label>
 
             <button id="newDayButton" class="inline-flex h-11 min-h-touch shrink-0 items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
@@ -161,32 +164,38 @@
             <option value="KTB">KTB Hotel</option>
           </select>
         </div>
-        <div class="mb-3 grid grid-cols-2 gap-2">
-          <div id="mobileMealPlanStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Meal Plan: Missing</div>
-          <div id="mobilePackageForecastStatus" class="file-status is-missing rounded-xl px-3 py-2 text-center text-[11px] font-bold">Forecast: Missing</div>
-        </div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <label for="mealPlanFile" class="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
-            <i class="fa-solid fa-file-arrow-up text-primary"></i>
-            <span>Meal Plan XML</span>
+          <label
+            id="mobileMealPlanStatus"
+            for="mealPlanFile"
+            class="file-btn is-missing inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+            title="Click to upload Meal Plan XML"
+          >
+            <i class="fa-solid fa-file-arrow-up text-red-600"></i>
+            <span>Meal Plan: Missing</span>
           </label>
-          <label for="packageForecastFile" class="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700">
-            <i class="fa-solid fa-file-arrow-up text-primary"></i>
-            <span>Forecast XML</span>
+          <label
+            id="mobilePackageForecastStatus"
+            for="packageForecastFile"
+            class="file-btn is-missing inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+            title="Click to upload Forecast XML"
+          >
+            <i class="fa-solid fa-file-arrow-up text-red-600"></i>
+            <span>Forecast: Missing</span>
           </label>
-          <button id="mobileNewDayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700" type="button">
+          <button id="mobileNewDayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
             <i class="fa-solid fa-rotate-left"></i>
             <span>New Day</span>
           </button>
-          <button id="mobileReportsDashboardButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-50 text-sm font-bold text-primary" type="button">
+          <button id="mobileReportsDashboardButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-50 text-sm font-bold text-primary transition active:scale-[0.97] hover:bg-blue-100" type="button">
             <i class="fa-solid fa-cloud-arrow-down"></i>
             <span>Past Reports</span>
           </button>
-          <button id="mobileExportTodayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-bold text-success" type="button">
+          <button id="mobileExportTodayButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-bold text-success transition active:scale-[0.97] hover:bg-green-100" type="button">
             <i class="fa-solid fa-file-excel"></i>
             <span>Export Report</span>
           </button>
-          <button id="mobileLogoutButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white" type="button">
+          <button id="mobileLogoutButton" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
             <i class="fa-solid fa-right-from-bracket"></i>
             <span>Logout</span>
           </button>
