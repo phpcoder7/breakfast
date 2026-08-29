@@ -398,12 +398,16 @@ class BreakfastApp {
     // Shared Guest Roster Sync across mobile/tablets
     if (remoteData.roster && Array.isArray(remoteData.roster.guests) && remoteData.roster.guests.length > 0) {
       const hasLocalGuests = Array.isArray(this.state.guests) && this.state.guests.length > 0;
-      if (!hasLocalGuests || this.state.guests.length !== remoteData.roster.guests.length) {
+      const fileStatusMismatch =
+        Boolean(this.state.filesLoaded?.packageForecast) !== Boolean(remoteData.roster.filesLoaded?.packageForecast) ||
+        Boolean(this.state.filesLoaded?.mealPlan) !== Boolean(remoteData.roster.filesLoaded?.mealPlan);
+
+      if (!hasLocalGuests || this.state.guests.length !== remoteData.roster.guests.length || fileStatusMismatch) {
         this.state.guests = remoteData.roster.guests;
         this.state.fileNames = remoteData.roster.fileNames || this.state.fileNames;
         this.state.filesLoaded = remoteData.roster.filesLoaded || {
-          mealPlan: Boolean(this.state.fileNames.mealPlan),
-          packageForecast: Boolean(this.state.fileNames.packageForecast)
+          mealPlan: Boolean(this.state.fileNames?.mealPlan),
+          packageForecast: Boolean(this.state.fileNames?.packageForecast)
         };
         globalSearchIndex.buildIndex(this.state.guests);
         this.persistState();

@@ -133,7 +133,7 @@ export async function onRequestGet({ request, env }) {
     }
 
     // 3. Fetch payment events
-    const paymentsSql = "SELECT * FROM payment_events WHERE brand = ? AND service_date = ? ORDER BY timestamp DESC";
+    const paymentsSql = "SELECT * FROM payment_events WHERE brand = ? AND service_date = ? ORDER BY created_at DESC";
     const paymentParams = [brand, serviceDate];
     const paymentsStmt = db.prepare(paymentsSql).bind(...paymentParams);
     const { results: payments } = await paymentsStmt.all();
@@ -423,7 +423,7 @@ export async function onRequestPost({ request, env }) {
       const { results: allCheckins } = await allCheckinsStmt.all();
 
       const allPaymentsStmt = db
-        .prepare("SELECT * FROM payment_events WHERE brand = ? AND service_date = ? ORDER BY timestamp DESC")
+        .prepare("SELECT * FROM payment_events WHERE brand = ? AND service_date = ? ORDER BY created_at DESC")
         .bind(brand, serviceDate);
       const { results: allPayments } = await allPaymentsStmt.all();
 
