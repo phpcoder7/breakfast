@@ -496,9 +496,9 @@ export class BreakfastUI {
     const label = type === "mealPlan" ? "Meal Plan" : "Forecast";
 
     const desktopMissingClass =
-      "file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100";
+      "file-btn is-missing inline-flex h-10 min-h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100";
     const desktopLoadedClass =
-      "file-btn is-loaded inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 text-xs font-bold text-emerald-700 transition active:scale-[0.97] hover:bg-emerald-100";
+      "file-btn is-loaded inline-flex h-10 min-h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition active:scale-[0.97] hover:bg-emerald-100";
 
     const mobileMissingClass =
       "file-btn is-missing inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100";
@@ -537,7 +537,7 @@ export class BreakfastUI {
     const label = type === "mealPlan" ? "Meal Plan" : "Forecast";
 
     const desktopLoadingClass =
-      "file-btn is-loading inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 text-xs font-bold text-amber-700 transition active:scale-[0.97] hover:bg-amber-100";
+      "file-btn is-loading inline-flex h-10 min-h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 transition active:scale-[0.97] hover:bg-amber-100";
     const mobileLoadingClass =
       "file-btn is-loading inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2 text-xs font-bold text-amber-700 transition active:scale-[0.97] hover:bg-amber-100";
 

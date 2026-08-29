@@ -77,26 +77,26 @@
 
       <!-- Top Bar -->
       <header class="app-header mb-2 flex shrink-0 items-center justify-between gap-2 rounded-2xl bg-white px-2.5 py-2 shadow-card sm:mb-3 sm:gap-3 sm:rounded-3xl sm:px-4 sm:py-2.5">
-        <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div class="flex shrink-0 items-center gap-2 sm:gap-3">
           <img
             id="appBrandLogo"
             src="./assets/logos/kca.svg"
             alt="Brand logo"
-            class="app-brand-logo h-10 w-auto max-w-[6.5rem] shrink-0 object-contain sm:h-14 sm:max-w-[10rem] md:h-16 md:max-w-[14rem]"
+            class="app-brand-logo h-9 w-auto max-w-[5rem] shrink-0 object-contain sm:h-11 sm:max-w-[7rem] md:h-12 md:max-w-[8.5rem]"
           />
-          <div class="min-w-0 hidden xs:block sm:block">
-            <h1 class="truncate text-xs font-extrabold tracking-tight text-slate-900 sm:text-base md:text-xl">Breakfast Check-in</h1>
-            <p class="hidden truncate text-xs font-medium text-slate-400 sm:block">Restaurant Host Station</p>
+          <div class="hidden shrink-0 xs:block sm:block">
+            <h1 class="whitespace-nowrap text-sm font-extrabold tracking-tight text-slate-900 sm:text-base md:text-lg">Breakfast Check-in</h1>
+            <p class="hidden whitespace-nowrap text-[11px] font-medium text-slate-400 sm:block">Restaurant Host Station</p>
           </div>
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
           <!-- Desktop / wide screens only -->
-          <div class="header-actions hidden items-center gap-2 xl:flex">
+          <div class="header-actions hidden items-center gap-1.5 xl:gap-2 xl:flex">
             <label
               id="mealPlanStatus"
               for="mealPlanFile"
-              class="file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+              class="file-btn is-missing inline-flex h-10 min-h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
               title="Click to upload Meal Plan XML"
             >
               <i class="fa-solid fa-file-arrow-up text-red-600"></i>
@@ -106,19 +106,19 @@
             <label
               id="packageForecastStatus"
               for="packageForecastFile"
-              class="file-btn is-missing inline-flex h-11 min-h-touch shrink-0 cursor-pointer items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
+              class="file-btn is-missing inline-flex h-10 min-h-[40px] shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 transition active:scale-[0.97] hover:bg-red-100"
               title="Click to upload Forecast XML"
             >
               <i class="fa-solid fa-file-arrow-up text-red-600"></i>
               <span>Forecast: Missing</span>
             </label>
 
-            <button id="newDayButton" class="inline-flex h-11 min-h-touch shrink-0 items-center gap-2 rounded-2xl bg-slate-100 px-3 text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
+            <button id="newDayButton" class="inline-flex h-10 min-h-[40px] shrink-0 items-center gap-1.5 rounded-2xl bg-slate-100 px-3 text-xs sm:text-sm font-bold text-slate-700 transition active:scale-[0.97] hover:bg-slate-200" type="button">
               <i class="fa-solid fa-rotate-left"></i>
               <span>New Day</span>
             </button>
 
-            <button id="reportsDashboardButton" class="inline-flex h-11 min-h-touch shrink-0 items-center gap-2 rounded-2xl bg-blue-50 px-3 text-sm font-bold text-primary transition active:scale-[0.97] hover:bg-blue-100" type="button">
+            <button id="reportsDashboardButton" class="inline-flex h-10 min-h-[40px] shrink-0 items-center gap-1.5 rounded-2xl bg-blue-50 px-3 text-xs sm:text-sm font-bold text-primary transition active:scale-[0.97] hover:bg-blue-100" type="button">
               <i class="fa-solid fa-cloud-arrow-down"></i>
               <span>Past Reports</span>
             </button>
@@ -135,9 +135,9 @@
 
             <span id="syncStatusBadge" class="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-emerald-500" title="Connected & Synced (Live)"></span>
 
-            <span id="currentUserBadge" class="inline-flex h-11 min-h-touch items-center rounded-full bg-primary/10 px-3 text-sm font-bold text-primary"></span>
+            <span id="currentUserBadge" class="inline-flex h-10 min-h-[40px] items-center rounded-full bg-primary/10 px-3 text-xs sm:text-sm font-bold text-primary"></span>
 
-            <button id="logoutButton" class="inline-flex h-11 min-h-touch items-center gap-2 rounded-2xl bg-slate-900 px-3 text-sm font-bold text-white transition active:scale-[0.97]" type="button">
+            <button id="logoutButton" class="inline-flex h-10 min-h-[40px] items-center gap-1.5 rounded-2xl bg-slate-900 px-3 text-xs sm:text-sm font-bold text-white transition active:scale-[0.97]" type="button">
               <i class="fa-solid fa-right-from-bracket"></i>
               <span>Logout</span>
             </button>
