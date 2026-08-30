@@ -267,11 +267,11 @@ export async function onRequestPost({ request, env }) {
       .bind(sessionId, brand, serviceDate, nowIso, nowIso)
       .run();
 
-    // 1. If roster is provided, persist to guest_rosters table
-    if (roster && Array.isArray(roster.guests) && roster.guests.length > 0) {
+    // 1. If roster is provided, persist to guest_rosters table (even when empty on New Day)
+    if (roster && typeof roster === "object") {
       try {
-        const guestCount = roster.guests.length;
-        const rosterDataJson = JSON.stringify(roster.guests);
+        const guestCount = Array.isArray(roster.guests) ? roster.guests.length : 0;
+        const rosterDataJson = JSON.stringify(Array.isArray(roster.guests) ? roster.guests : []);
         const fileNamesJson = JSON.stringify(roster.fileNames || {});
         const filesLoadedJson = JSON.stringify(roster.filesLoaded || {});
 
@@ -463,6 +463,32 @@ export async function onRequestPost({ request, env }) {
               .bind(newTable, nowIso, id)
           );
         }
+      } else if (type === "NEW_DAY") {
+        // Close session and reset roster in database
+        statements.push(
+          db
+            .prepare(
+              `UPDATE daily_sessions
+               SET is_closed = 1,
+                   closed_at = ?,
+                   updated_at = ?
+               WHERE brand = ? AND service_date = ?`
+            )
+            .bind(nowIso, nowIso, brand, serviceDate)
+        );
+        statements.push(
+          db
+            .prepare(
+              `UPDATE guest_rosters
+               SET guest_count = 0,
+                   roster_data = '[]',
+                   file_names = '{"mealPlan":"","packageForecast":""}',
+                   files_loaded = '{"mealPlan":false,"packageForecast":false}',
+                   updated_at = ?
+               WHERE brand = ? AND service_date = ?`
+            )
+            .bind(nowIso, brand, serviceDate)
+        );
       }
     }
 

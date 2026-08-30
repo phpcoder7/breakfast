@@ -69,8 +69,47 @@ export class RealtimeSyncEngine {
     }
   }
 
-  async syncRoster(guests, fileNames = {}, filesLoaded = {}) {
-    if (!Array.isArray(guests) || guests.length === 0) return;
+  async syncRoster(guests = [], fileNames = {}, filesLoaded = {}) {
+    try {
+      const brand = this.getBrand();
+      const serviceDate = this.getServiceDate();
+      if (!brand || !serviceDate) return;
+
+      const token = getAuthToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const safeGuests = Array.isArray(guests) ? guests : [];
+      const payload = {
+        brand,
+        serviceDate,
+        deviceId: this.deviceId,
+        mutations: [],
+        roster: {
+          guests: safeGuests,
+          fileNames: fileNames || {},
+          filesLoaded: filesLoaded || {}
+        }
+      };
+
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        this._lastSyncedRosterKey = `${brand}_${serviceDate}_${safeGuests.length}`;
+        this.lastEtag = "";
+      }
+    } catch (err) {
+      console.warn("Roster cloud sync notice:", err);
+    }
+  }
+
+  async syncNewDay() {
     try {
       const brand = this.getBrand();
       const serviceDate = this.getServiceDate();
@@ -86,24 +125,33 @@ export class RealtimeSyncEngine {
         brand,
         serviceDate,
         deviceId: this.deviceId,
+        mutations: [
+          {
+            type: "NEW_DAY",
+            data: {
+              brand,
+              serviceDate,
+              timestamp: new Date().toISOString()
+            }
+          }
+        ],
         roster: {
-          guests,
-          fileNames,
-          filesLoaded
+          guests: [],
+          fileNames: { mealPlan: "", packageForecast: "" },
+          filesLoaded: { mealPlan: false, packageForecast: false }
         }
       };
 
-      const res = await fetch("/api/sync", {
+      await fetch("/api/sync", {
         method: "POST",
         headers,
         body: JSON.stringify(payload)
       });
 
-      if (res.ok) {
-        this._lastSyncedRosterKey = `${brand}_${serviceDate}_${guests.length}`;
-      }
+      this._lastSyncedRosterKey = `${brand}_${serviceDate}_0`;
+      this.lastEtag = "";
     } catch (err) {
-      console.warn("Roster cloud sync notice:", err);
+      console.warn("Could not sync New Day to cloud:", err);
     }
   }
 

@@ -16,6 +16,7 @@ import {
 import { exportTodayReport } from "./export.js";
 import { fetchFullReport, fetchReportsFromCloud, saveDailyReportToCloud } from "./cloudSync.js";
 import { mergeGuestData } from "./mergeData.js";
+import { calculateReservationEntitlement } from "./entitlement.js";
 import { markPaymentPaid, syncPaymentList } from "./payment.js";
 import { exactRoomMatch, globalSearchIndex, searchGuests } from "./search.js";
 import { BreakfastUI } from "./ui.js";
@@ -81,8 +82,30 @@ class BreakfastApp {
     const brand = getActiveBrand();
     const stored = readStoredState(brand);
     if (stored) {
+      const restoredGuests = Array.isArray(stored.guests)
+        ? stored.guests.map((g) => {
+            if (!g.productDetails || g.productDetails.length === 0) return g;
+            const recheck = calculateReservationEntitlement({
+              mealPlan: g.mealPlan,
+              products: g.products || [],
+              productDetails: g.productDetails || [],
+              adults: g.adults,
+              children: g.children,
+              rateCode: g.rateCode
+            });
+            return {
+              ...g,
+              breakfastIncluded: recheck.breakfastIncluded,
+              breakfastStatus: recheck.breakfastStatus,
+              breakfastQuantity: recheck.totalBreakfastCovers,
+              entitlementBreakdown: recheck.breakdown
+            };
+          })
+        : [];
+
       return {
         ...stored,
+        guests: restoredGuests,
         fileNames: stored.fileNames || {
           mealPlan: "",
           packageForecast: ""
@@ -416,24 +439,73 @@ class BreakfastApp {
     }
 
     // Shared Guest Roster Sync across mobile/tablets
-    if (remoteData.roster && Array.isArray(remoteData.roster.guests) && remoteData.roster.guests.length > 0) {
-      const hasLocalGuests = Array.isArray(this.state.guests) && this.state.guests.length > 0;
-      const fileStatusMismatch =
-        Boolean(this.state.filesLoaded?.packageForecast) !== Boolean(remoteData.roster.filesLoaded?.packageForecast) ||
-        Boolean(this.state.filesLoaded?.mealPlan) !== Boolean(remoteData.roster.filesLoaded?.mealPlan);
+    if (remoteData.roster) {
+      const remoteGuests = Array.isArray(remoteData.roster.guests) ? remoteData.roster.guests : [];
+      const remoteFilesLoaded = remoteData.roster.filesLoaded || { mealPlan: false, packageForecast: false };
+      const remoteFileNames = remoteData.roster.fileNames || { mealPlan: "", packageForecast: "" };
+      const isRemoteEmpty = remoteGuests.length === 0 && !remoteFilesLoaded.mealPlan && !remoteFilesLoaded.packageForecast;
+      const isLocalLoaded = (this.state.guests && this.state.guests.length > 0) || Boolean(this.state.filesLoaded?.mealPlan) || Boolean(this.state.filesLoaded?.packageForecast);
 
-      if (!hasLocalGuests || this.state.guests.length !== remoteData.roster.guests.length || fileStatusMismatch) {
-        this.state.guests = remoteData.roster.guests;
-        this.state.fileNames = remoteData.roster.fileNames || this.state.fileNames;
-        this.state.filesLoaded = remoteData.roster.filesLoaded || {
-          mealPlan: Boolean(this.state.fileNames?.mealPlan),
-          packageForecast: Boolean(this.state.fileNames?.packageForecast)
-        };
-        globalSearchIndex.buildIndex(this.state.guests);
+      if (isRemoteEmpty && isLocalLoaded) {
+        // A New Day was started on another tablet/device: reset local files & roster immediately
+        this.state.guests = [];
+        this.state.filesLoaded = { mealPlan: false, packageForecast: false };
+        this.state.fileNames = { mealPlan: "", packageForecast: "" };
+        this.state.rawData = { mealPlan: [], packageForecast: [] };
+        if (this.selectedGuest) {
+          this.selectedGuest = null;
+        }
+        globalSearchIndex.clear();
         this.persistState();
-        stateChanged = true;
-        if (!hasLocalGuests) {
-          this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests from cloud sync. Ready for search & check-in.`, "success");
+        this.refreshUi();
+        this.ui.renderMessage("A new day was started on another device. Roster and files reset.", "info");
+      } else if (remoteGuests.length > 0) {
+        const hasLocalGuests = Array.isArray(this.state.guests) && this.state.guests.length > 0;
+        const fileStatusMismatch =
+          Boolean(this.state.filesLoaded?.packageForecast) !== Boolean(remoteFilesLoaded.packageForecast) ||
+          Boolean(this.state.filesLoaded?.mealPlan) !== Boolean(remoteFilesLoaded.mealPlan);
+
+        // Re-evaluate entitlement dynamically on incoming guests to ensure latest engine rules apply
+        const incomingGuests = remoteGuests.map((g) => {
+          if (!g.productDetails || g.productDetails.length === 0) return g;
+          const recheck = calculateReservationEntitlement({
+            mealPlan: g.mealPlan,
+            products: g.products || [],
+            productDetails: g.productDetails || [],
+            adults: g.adults,
+            children: g.children,
+            rateCode: g.rateCode
+          });
+          return {
+            ...g,
+            breakfastIncluded: recheck.breakfastIncluded,
+            breakfastStatus: recheck.breakfastStatus,
+            breakfastQuantity: recheck.totalBreakfastCovers,
+            entitlementBreakdown: recheck.breakdown
+          };
+        });
+
+        const hasGuestDiff = !hasLocalGuests ||
+          this.state.guests.length !== incomingGuests.length ||
+          fileStatusMismatch ||
+          this.state.guests.some((lg, idx) => lg.breakfastQuantity !== incomingGuests[idx]?.breakfastQuantity);
+
+        if (hasGuestDiff) {
+          this.state.guests = incomingGuests;
+          this.state.fileNames = remoteFileNames;
+          this.state.filesLoaded = remoteFilesLoaded;
+          globalSearchIndex.buildIndex(this.state.guests);
+          if (this.selectedGuest) {
+            const updatedSelected = this.state.guests.find((g) => g.roomNumber === this.selectedGuest.roomNumber);
+            if (updatedSelected) {
+              this.selectedGuest = updatedSelected;
+            }
+          }
+          this.persistState();
+          stateChanged = true;
+          if (!hasLocalGuests) {
+            this.ui.renderMessage(`Loaded ${this.state.guests.length} hotel guests from cloud sync. Ready for search & check-in.`, "success");
+          }
         }
       }
     }
@@ -1202,6 +1274,7 @@ class BreakfastApp {
     try {
       await exportTodayReport(this.state.checkIns);
       await this.syncCurrentStateToCloud();
+      await this.realtimeSync?.syncNewDay();
     } catch (error) {
       this.ui.renderMessage(`Could not download reports: ${error.message}. New day was cancelled.`, "error");
       return;
@@ -1209,7 +1282,6 @@ class BreakfastApp {
 
     clearStoredState(getActiveBrand());
     clearDailyDb(getActiveBrand(), this.state.serviceDate).catch(() => {});
-    this.realtimeSync?.syncRoster([], { mealPlan: "", packageForecast: "" }, { mealPlan: false, packageForecast: false });
     globalSearchIndex.clear();
 
     this.state.checkIns = [];
