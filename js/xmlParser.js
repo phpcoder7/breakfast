@@ -321,23 +321,39 @@ export function parseMealPlanXml(xmlText) {
 }
 
 /**
- * Extracts summary totals and report metadata from Oracle PKGFORECAST XML
+ * Extracts summary totals and report metadata from Oracle PKGFORECAST XML (multi-date aware)
  * @param {Document|FallbackDocument} xmlDocument
- * @returns {{ stayDate: string, stayDateChar: string, stayDay: string, reportId: string, summaryTotals: Record<string, number>, totalSummaryPackages: number }}
+ * @returns {{ stayDate: string, stayDateChar: string, stayDay: string, reportId: string, stayDates: string[], summaryByDate: Record<string, object>, summaryTotals: Record<string, number>, totalSummaryPackages: number }}
  */
 export function extractPackageForecastSummary(xmlDocument) {
-  let stayDate = "";
-  let stayDateChar = "";
-  let stayDay = "";
-  let reportId = "";
+  let primaryStayDate = "";
+  let primaryStayDateChar = "";
+  let primaryStayDay = "";
+  let primaryReportId = "";
   const summaryTotals = {};
+  const summaryByDate = {};
+  const stayDates = [];
   let totalSummaryPackages = 0;
 
   const stayDateNodes = Array.from(xmlDocument.getElementsByTagName("G_STAY_DATE"));
   for (const stayNode of stayDateNodes) {
-    stayDate = stayDate || getChildText(stayNode, "STAY_DATE");
-    stayDateChar = stayDateChar || getChildText(stayNode, "STAY_DATE_CHAR");
-    stayDay = stayDay || getChildText(stayNode, "STAY_DAY");
+    const stayDate = getChildText(stayNode, "STAY_DATE") || "UNKNOWN_DATE";
+    const stayDateChar = getChildText(stayNode, "STAY_DATE_CHAR");
+    const stayDay = getChildText(stayNode, "STAY_DAY");
+
+    if (!primaryStayDate && stayDate !== "UNKNOWN_DATE") {
+      primaryStayDate = stayDate;
+      primaryStayDateChar = stayDateChar;
+      primaryStayDay = stayDay;
+    }
+
+    if (!stayDates.includes(stayDate) && stayDate !== "UNKNOWN_DATE") {
+      stayDates.push(stayDate);
+    }
+
+    const dateSummaryTotals = {};
+    let dateTotalPackages = 0;
+    let dateReportId = "";
 
     const productNodes = Array.from(stayNode.getElementsByTagName("G_PRODUCT_ID"));
     for (const prodNode of productNodes) {
@@ -347,22 +363,39 @@ export function extractPackageForecastSummary(xmlDocument) {
       let productTotal = 0;
       const reportNodes = Array.from(prodNode.getElementsByTagName("G_REPORT_ID"));
       for (const repNode of reportNodes) {
-        reportId = reportId || getChildText(repNode, "REPORT_ID");
+        const repId = getChildText(repNode, "REPORT_ID");
+        if (repId) {
+          dateReportId = dateReportId || repId;
+          primaryReportId = primaryReportId || repId;
+        }
         const totalPkgsStr = getChildText(repNode, "TOTAL_PKGS");
         const count = parseInteger(totalPkgsStr, 0);
         productTotal += count;
       }
 
+      dateSummaryTotals[prodCode] = (dateSummaryTotals[prodCode] || 0) + productTotal;
       summaryTotals[prodCode] = (summaryTotals[prodCode] || 0) + productTotal;
+      dateTotalPackages += productTotal;
       totalSummaryPackages += productTotal;
     }
+
+    summaryByDate[stayDate] = {
+      stayDate,
+      stayDateChar,
+      stayDay,
+      reportId: dateReportId || primaryReportId,
+      summaryTotals: dateSummaryTotals,
+      totalSummaryPackages: dateTotalPackages
+    };
   }
 
   return {
-    stayDate,
-    stayDateChar,
-    stayDay,
-    reportId,
+    stayDate: primaryStayDate,
+    stayDateChar: primaryStayDateChar,
+    stayDay: primaryStayDay,
+    reportId: primaryReportId,
+    stayDates,
+    summaryByDate,
     summaryTotals,
     totalSummaryPackages
   };
@@ -370,7 +403,7 @@ export function extractPackageForecastSummary(xmlDocument) {
 
 /**
  * Parses Oracle PKGFORECAST XML with dynamic package identification,
- * hierarchical context preservation, and data-driven summary extraction.
+ * multi-date preservation, hierarchical context preservation, and data-driven summary extraction.
  * @param {string} xmlText
  * @returns {Array<object>}
  */
@@ -378,7 +411,7 @@ export function parsePackageForecastXml(xmlText) {
   const xmlDocument = parseXml(xmlText);
   requireFileType(xmlDocument, "PKGFORECAST");
 
-  // 1. Dynamic Summary Section Extraction
+  // 1. Dynamic Summary Section Extraction (Multi-Date Aware)
   const summary = extractPackageForecastSummary(xmlDocument);
 
   // 2. Dynamic Reservation Details Extraction
@@ -403,6 +436,16 @@ export function parsePackageForecastXml(xmlText) {
     const persons = parseInteger(getChildText(reservationNode, "PERSONS"), 0);
     const adults = parseInteger(getChildText(reservationNode, "ADULTS"), 0);
     const children = parseInteger(getChildText(reservationNode, "CHILDREN"), 0);
+    const noOfRooms = parseInteger(getChildText(reservationNode, "NO_OF_ROOMS"), 1);
+
+    const rawProducts = splitProducts(getChildText(reservationNode, "PRODUCTS"));
+    // Ensure parent product group code is captured if not in products list
+    if (productGroupCode && !rawProducts.includes(productGroupCode)) {
+      rawProducts.push(productGroupCode);
+    }
+
+    const stayDate = getChildText(reservationNode, "STAY_DATE1") || summary.stayDate;
+    const reportId = getChildText(reservationNode, "REPORT_ID1") || summary.reportId;
 
     return {
       confirmationNumber: normalizeText(getChildText(reservationNode, "CONFIRMATION_NO")),
@@ -414,12 +457,14 @@ export function parsePackageForecastXml(xmlText) {
       firstName,
       lastName,
       displayName,
-      products: splitProducts(getChildText(reservationNode, "PRODUCTS")),
+      products: rawProducts,
+      rawProductsString: getChildText(reservationNode, "PRODUCTS"),
       productGroupCode,
       productDescription,
       packageQuantity,
       quantity,
       persons,
+      noOfRooms,
       calculationRule: getChildText(reservationNode, "CALCULATION_RULE"),
       adults,
       children,
@@ -428,8 +473,9 @@ export function parsePackageForecastXml(xmlText) {
       arrival: getChildText(reservationNode, "TRUNC_ARRIVAL"),
       departure: getChildText(reservationNode, "TRUNC_DEPARTURE"),
       rateCode: getChildText(reservationNode, "RATE_CODE"),
-      stayDate: getChildText(reservationNode, "STAY_DATE1") || summary.stayDate,
-      reportId: getChildText(reservationNode, "REPORT_ID1") || summary.reportId,
+      pkgForecastGroup: getChildText(reservationNode, "PKG_FORCAST_GROUP"),
+      stayDate,
+      reportId,
       source: "packageForecast"
     };
   });
@@ -437,11 +483,14 @@ export function parsePackageForecastXml(xmlText) {
   // Attach metadata and summary totals to the result array for zero-overhead access
   Object.assign(rows, {
     summaryTotals: summary.summaryTotals,
+    summaryByDate: summary.summaryByDate,
+    stayDates: summary.stayDates,
     metadata: {
       stayDate: summary.stayDate,
       stayDateChar: summary.stayDateChar,
       stayDay: summary.stayDay,
       reportId: summary.reportId,
+      stayDates: summary.stayDates,
       totalSummaryPackages: summary.totalSummaryPackages
     }
   });

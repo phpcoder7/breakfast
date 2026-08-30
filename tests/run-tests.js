@@ -19,6 +19,15 @@ import {
   reconcilePackageForecast
 } from "../js/mergeData.js";
 import {
+  productMaster,
+  PRODUCT_CLASSIFICATION,
+  CALCULATION_BASIS,
+  ENTITLEMENT_SOURCE
+} from "../js/productMaster.js";
+import {
+  calculateReservationEntitlement
+} from "../js/entitlement.js";
+import {
   parseMealPlanXml,
   parsePackageForecastXml,
   extractPackageForecastSummary
@@ -673,6 +682,287 @@ test("oracleParser: Multi-package room aggregation and discrepancy tolerance", (
   assert.equal(reconMismatched.discrepancies[0].summaryCount, 5);
   assert.equal(reconMismatched.discrepancies[0].detailCount, 2);
   assert.equal(reconMismatched.discrepancies[0].difference, -3);
+});
+
+// 7. ORACLE PRODUCT MASTER & ADVANCED ENTITLEMENT ENGINE TESTS
+test("oracleMaster: Product Master registers and resolves all Oracle Package types from PDF", () => {
+  // Breakfast Products
+  const bfain = productMaster.resolveProduct("BFAIN");
+  assert.equal(bfain.resolved, true);
+  assert.equal(bfain.classification, PRODUCT_CLASSIFICATION.BREAKFAST);
+  assert.equal(bfain.calculationBasis, CALCULATION_BASIS.PER_ADULT);
+  assert.equal(bfain.isBreakfast, true);
+
+  const bfcin = productMaster.resolveProduct("BFCIN");
+  assert.equal(bfcin.resolved, true);
+  assert.equal(bfcin.classification, PRODUCT_CLASSIFICATION.BREAKFAST);
+  assert.equal(bfcin.calculationBasis, CALCULATION_BASIS.PER_CHILD);
+
+  // Flat-Rate Breakfast (UPSBB1 - UPSBB4)
+  const upsbb1 = productMaster.resolveProduct("UPSBB1");
+  assert.equal(upsbb1.resolved, true);
+  assert.equal(upsbb1.classification, PRODUCT_CLASSIFICATION.BREAKFAST);
+  assert.equal(upsbb1.calculationBasis, CALCULATION_BASIS.FLAT_RATE);
+  assert.equal(upsbb1.flatCovers, 1);
+
+  const upsbb4 = productMaster.resolveProduct("UPSBB4");
+  assert.equal(upsbb4.flatCovers, 4);
+
+  // Full Board & Half Board (NOT Breakfast)
+  const fbain = productMaster.resolveProduct("FBAIN");
+  assert.equal(fbain.resolved, true);
+  assert.equal(fbain.classification, PRODUCT_CLASSIFICATION.FULL_BOARD);
+  assert.equal(fbain.isBreakfast, false);
+
+  const hbain = productMaster.resolveProduct("HBAIN");
+  assert.equal(hbain.resolved, true);
+  assert.equal(hbain.classification, PRODUCT_CLASSIFICATION.HALF_BOARD);
+  assert.equal(hbain.isBreakfast, false);
+
+  // Club Upsell & Paid Upsells (NOT Breakfast)
+  const ups300c = productMaster.resolveProduct("UPS300C");
+  assert.equal(ups300c.resolved, true);
+  assert.equal(ups300c.classification, PRODUCT_CLASSIFICATION.UPSELL);
+  assert.equal(ups300c.isBreakfast, false);
+
+  const uss500 = productMaster.resolveProduct("USS500");
+  assert.equal(uss500.resolved, true);
+  assert.equal(uss500.classification, PRODUCT_CLASSIFICATION.UPSELL);
+  assert.equal(uss500.isBreakfast, false);
+
+  // Technical & Tourism Dirham
+  const lau3in = productMaster.resolveProduct("LAU3IN");
+  assert.equal(lau3in.classification, PRODUCT_CLASSIFICATION.TECHNICAL);
+
+  const td1 = productMaster.resolveProduct("TD1BDRM");
+  assert.equal(td1.classification, PRODUCT_CLASSIFICATION.OTHER);
+});
+
+test("oracleParser: Reference XML 2 (pkgforecast_24021164.XML) with mixed Upsell & Breakfast packages", () => {
+  const xmlPath = path.resolve(process.cwd(), "pkgforecast_24021164.XML");
+  const xmlText = fs.readFileSync(xmlPath, "utf8");
+
+  const forecastRows = parsePackageForecastXml(xmlText);
+  assert.equal(Array.isArray(forecastRows), true);
+  assert.equal(forecastRows.length, 127); // 127 reservation details
+
+  assert.equal(forecastRows.metadata.stayDate, "30-AUG-26");
+  assert.equal(forecastRows.metadata.reportId, "81218523");
+  assert.equal(forecastRows.metadata.totalSummaryPackages, 203);
+
+  // Summary packages breakdown
+  assert.deepEqual(forecastRows.summaryTotals, {
+    BFAAD: 2,
+    BFAIN: 172,
+    BFCIN: 15,
+    UPS300C: 3,
+    UPSBB1: 1,
+    USS1500: 2,
+    USS500: 5,
+    WEB_BFSA: 3
+  });
+
+  // Dynamic reconciliation with breakfast vs non-breakfast distinction
+  const recon = reconcilePackageForecast(forecastRows, forecastRows.summaryTotals);
+  assert.equal(recon.isReconciled, true);
+  assert.equal(recon.totalSummaryPackages, 203);
+  assert.equal(recon.totalDetailPackages, 203);
+  assert.equal(recon.totalBreakfastPackages, 193); // 2 + 172 + 15 + 1 + 3 = 193
+  assert.equal(recon.totalNonBreakfastPackages, 10); // 3 (UPS300C) + 2 (USS1500) + 5 (USS500) = 10
+  assert.equal(recon.discrepancies.length, 0);
+
+  // Merging guest data safely ignores non-breakfast upsells in covers
+  const merged = mergeGuestData([], forecastRows);
+  assert.equal(merged.length > 90, true);
+});
+
+test("oracleEntitlement: Critical Multi-Product Edge Case (UPS300C + BFAIN + BFCIN)", () => {
+  // Reservation with Club Upsell (UPS300C), Adult Breakfast (BFAIN), and Child Breakfast (BFCIN)
+  const entitlement = calculateReservationEntitlement({
+    products: ["UPS300C", "BFAIN", "BFCIN"],
+    productDetails: [
+      { productGroupCode: "UPS300C", productDescription: "AED 300 Club Upsell package", packageQuantity: 1 },
+      { productGroupCode: "BFAIN", productDescription: "Breakfast Adult Included in Rate", packageQuantity: 2 },
+      { productGroupCode: "BFCIN", productDescription: "Breakfast Child Included in Rate", packageQuantity: 1 }
+    ],
+    adults: 2,
+    children: 1
+  });
+
+  assert.equal(entitlement.breakfastIncluded, true);
+  assert.equal(entitlement.breakfastStatus, BREAKFAST_STATUS.INCLUDED);
+  assert.equal(entitlement.totalBreakfastCovers, 3); // 2 Adults + 1 Child
+  assert.equal(entitlement.adultCovers, 2);
+  assert.equal(entitlement.childCovers, 1);
+  assert.equal(entitlement.flatCovers, 0);
+
+  // Verify non-breakfast product is preserved and isolated
+  assert.equal(entitlement.nonBreakfastProducts.length, 1);
+  assert.equal(entitlement.nonBreakfastProducts[0].productCode, "UPS300C");
+  assert.equal(entitlement.nonBreakfastProducts[0].classification, PRODUCT_CLASSIFICATION.UPSELL);
+
+  // Verify breakdown items
+  assert.equal(entitlement.breakdown.length, 2);
+  assert.equal(entitlement.breakdown[0].productCode, "BFAIN");
+  assert.equal(entitlement.breakdown[1].productCode, "BFCIN");
+});
+
+test("oracleEntitlement: Flat-Rate Packages (UPSBB1, UPSBB2, UPSBB3, UPSBB4)", () => {
+  // UPSBB1: 1 cover per package
+  const res1 = calculateReservationEntitlement({
+    products: ["UPSBB1"],
+    productDetails: [{ productGroupCode: "UPSBB1", packageQuantity: 1 }],
+    adults: 1
+  });
+  assert.equal(res1.totalBreakfastCovers, 1);
+  assert.equal(res1.flatCovers, 1);
+
+  // UPSBB3: 3 covers per package
+  const res3 = calculateReservationEntitlement({
+    products: ["UPSBB3"],
+    productDetails: [{ productGroupCode: "UPSBB3", packageQuantity: 1 }],
+    adults: 3
+  });
+  assert.equal(res3.totalBreakfastCovers, 3);
+  assert.equal(res3.flatCovers, 3);
+
+  // UPSBB4 with quantity 2 = 8 covers
+  const res4 = calculateReservationEntitlement({
+    products: ["UPSBB4"],
+    productDetails: [{ productGroupCode: "UPSBB4", packageQuantity: 2 }],
+    adults: 4
+  });
+  assert.equal(res4.totalBreakfastCovers, 8);
+  assert.equal(res4.flatCovers, 8);
+});
+
+test("oracleEntitlement: Full Board (FBAIN) & Half Board (HBAIN) do NOT grant breakfast covers", () => {
+  const fbRes = calculateReservationEntitlement({
+    products: ["FBAIN"],
+    productDetails: [{ productGroupCode: "FBAIN", packageQuantity: 2 }],
+    adults: 2
+  });
+  assert.equal(fbRes.breakfastIncluded, false);
+  assert.equal(fbRes.totalBreakfastCovers, 0);
+  assert.equal(fbRes.nonBreakfastProducts.length, 1);
+  assert.equal(fbRes.nonBreakfastProducts[0].classification, PRODUCT_CLASSIFICATION.FULL_BOARD);
+
+  const hbRes = calculateReservationEntitlement({
+    products: ["HBAIN"],
+    productDetails: [{ productGroupCode: "HBAIN", packageQuantity: 2 }],
+    adults: 2
+  });
+  assert.equal(hbRes.breakfastIncluded, false);
+  assert.equal(hbRes.totalBreakfastCovers, 0);
+  assert.equal(hbRes.nonBreakfastProducts[0].classification, PRODUCT_CLASSIFICATION.HALF_BOARD);
+});
+
+test("oracleEntitlement: Unknown Product (NEW_PRODUCT_999) safety & warning", () => {
+  const unknownRes = calculateReservationEntitlement({
+    products: ["NEW_PRODUCT_999"],
+    productDetails: [{ productGroupCode: "NEW_PRODUCT_999", packageQuantity: 2 }],
+    adults: 2
+  });
+
+  assert.equal(unknownRes.breakfastIncluded, false);
+  assert.equal(unknownRes.breakfastStatus, BREAKFAST_STATUS.UNKNOWN);
+  assert.equal(unknownRes.totalBreakfastCovers, 0);
+  assert.equal(unknownRes.unknownProducts.length, 1);
+  assert.equal(unknownRes.unknownProducts[0].productCode, "NEW_PRODUCT_999");
+  assert.equal(unknownRes.warnings.length, 1);
+});
+
+test("oracleMaster: Dynamic runtime product registration without code changes", () => {
+  const code = "FUTURE_CUSTOM_PACKAGE_99";
+  // Initially unknown
+  assert.equal(productMaster.resolveProduct(code).resolved, false);
+
+  // Dynamically register
+  productMaster.registerProduct({
+    productCode: code,
+    description: "Future Custom Champagne Breakfast",
+    classification: PRODUCT_CLASSIFICATION.BREAKFAST,
+    calculationBasis: CALCULATION_BASIS.PER_ADULT,
+    entitlementSource: ENTITLEMENT_SOURCE.INCLUDED_IN_RATE,
+    guestType: "ADULT"
+  });
+
+  const resolved = productMaster.resolveProduct(code);
+  assert.equal(resolved.resolved, true);
+  assert.equal(resolved.classification, PRODUCT_CLASSIFICATION.BREAKFAST);
+  assert.equal(resolved.isBreakfast, true);
+
+  const ent = calculateReservationEntitlement({
+    products: [code],
+    productDetails: [{ productGroupCode: code, packageQuantity: 2 }],
+    adults: 2
+  });
+  assert.equal(ent.totalBreakfastCovers, 2);
+  assert.equal(ent.breakfastIncluded, true);
+});
+
+test("oracleParser: Multi-Date PKGFORECAST XML extraction & date segmentation", () => {
+  const multiDateXml = `<?xml version="1.0" encoding="UTF-8"?>
+<PKGFORECAST>
+  <LIST_G_SUMTOTAL_PKGS>
+    <G_SUMTOTAL_PKGS>
+      <LIST_G_STAY_DATE>
+        <G_STAY_DATE>
+          <STAY_DATE>30-AUG-26</STAY_DATE>
+          <STAY_DATE_CHAR>30.08.26</STAY_DATE_CHAR>
+          <LIST_G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>BFAIN</PRODUCT_ID>
+              <LIST_G_REPORT_ID><G_REPORT_ID><REPORT_ID>8881</REPORT_ID><TOTAL_PKGS>5</TOTAL_PKGS></G_REPORT_ID></LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+          </LIST_G_PRODUCT_ID>
+        </G_STAY_DATE>
+        <G_STAY_DATE>
+          <STAY_DATE>31-AUG-26</STAY_DATE>
+          <STAY_DATE_CHAR>31.08.26</STAY_DATE_CHAR>
+          <LIST_G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>BFAIN</PRODUCT_ID>
+              <LIST_G_REPORT_ID><G_REPORT_ID><REPORT_ID>8882</REPORT_ID><TOTAL_PKGS>8</TOTAL_PKGS></G_REPORT_ID></LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+          </LIST_G_PRODUCT_ID>
+        </G_STAY_DATE>
+      </LIST_G_STAY_DATE>
+    </G_SUMTOTAL_PKGS>
+  </LIST_G_SUMTOTAL_PKGS>
+  <LIST_G_PRODUCT_GROUP>
+    <G_PRODUCT_GROUP>
+      <PRODUCT_ID1>BFAIN</PRODUCT_ID1>
+      <PRODUCT_DESC>Breakfast Adult Included in Rate</PRODUCT_DESC>
+      <LIST_G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>MD_1</CONFIRMATION_NO>
+          <ROOM>101</ROOM>
+          <GUEST_NAME>Date1Guest</GUEST_NAME>
+          <STAY_DATE1>30-AUG-26</STAY_DATE1>
+          <PKG_QTY>5</PKG_QTY>
+        </G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>MD_2</CONFIRMATION_NO>
+          <ROOM>102</ROOM>
+          <GUEST_NAME>Date2Guest</GUEST_NAME>
+          <STAY_DATE1>31-AUG-26</STAY_DATE1>
+          <PKG_QTY>8</PKG_QTY>
+        </G_RESV_DETAILS>
+      </LIST_G_RESV_DETAILS>
+    </G_PRODUCT_GROUP>
+  </LIST_G_PRODUCT_GROUP>
+</PKGFORECAST>`;
+
+  const parsed = parsePackageForecastXml(multiDateXml);
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed.stayDates.length, 2);
+  assert.deepEqual(parsed.stayDates, ["30-AUG-26", "31-AUG-26"]);
+
+  assert.equal(parsed.summaryByDate["30-AUG-26"].summaryTotals.BFAIN, 5);
+  assert.equal(parsed.summaryByDate["31-AUG-26"].summaryTotals.BFAIN, 8);
+  assert.equal(parsed.summaryTotals.BFAIN, 13);
+  assert.equal(parsed.metadata.totalSummaryPackages, 13);
 });
 
 async function runAllTests() {
