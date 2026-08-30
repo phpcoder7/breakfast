@@ -149,30 +149,35 @@ export function calculateReservationEntitlement({
     const resolved = productMaster.resolveProduct(code, { rateCode });
 
     if (resolved.classification === PRODUCT_CLASSIFICATION.BREAKFAST) {
-      hasForecastBreakfast = true;
       let covers = 0;
       if (resolved.calculationBasis === CALCULATION_BASIS.FLAT_RATE) {
         covers = resolved.flatCovers || 1;
         flatCovers += covers;
-      } else if (resolved.guestType === "CHILD") {
-        covers = numChildren || 1;
+      } else if (resolved.guestType === "CHILD" || resolved.calculationBasis === CALCULATION_BASIS.PER_CHILD) {
+        covers = numChildren;
         childCovers += covers;
+      } else if (resolved.guestType === "ADULT" || resolved.calculationBasis === CALCULATION_BASIS.PER_ADULT) {
+        covers = numAdults > 0 ? numAdults : (numChildren === 0 ? 1 : 0);
+        adultCovers += covers;
       } else {
-        covers = numAdults || 1;
+        covers = (numAdults + numChildren) > 0 ? (numAdults + numChildren) : 1;
         adultCovers += covers;
       }
 
-      breakdown.push({
-        productCode: code,
-        description: resolved.description,
-        classification: resolved.classification,
-        calculationBasis: resolved.calculationBasis,
-        entitlementSource: resolved.entitlementSource,
-        covers,
-        packageQuantity: 1,
-        guestType: resolved.guestType || "GENERAL",
-        isBreakfast: true
-      });
+      if (covers > 0) {
+        hasForecastBreakfast = true;
+        breakdown.push({
+          productCode: code,
+          description: resolved.description,
+          classification: resolved.classification,
+          calculationBasis: resolved.calculationBasis,
+          entitlementSource: resolved.entitlementSource,
+          covers,
+          packageQuantity: 1,
+          guestType: resolved.guestType || (resolved.flatCovers ? "FLAT" : "PERSON"),
+          isBreakfast: true
+        });
+      }
     } else if (!resolved.resolved) {
       unknownProducts.push(resolved);
       warnings.push(`Unknown product code '${code}' in products list`);

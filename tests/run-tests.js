@@ -807,6 +807,27 @@ test("oracleEntitlement: Critical Multi-Product Edge Case (UPS300C + BFAIN + BFC
   assert.equal(entitlement.breakdown[1].productCode, "BFCIN");
 });
 
+test("oracleEntitlement: Zero children with rate package bundle (Room 0623 case: BFAIN + BFCIN, 2 adults, 0 children)", () => {
+  // Room 0623 in pkgforecast_24021164.XML: Rate plan contains BFAIN,BFCIN but reservation has 2 adults, 0 children
+  const entitlement = calculateReservationEntitlement({
+    products: ["UPS300C", "USS500", "BFAIN", "BFCIN"],
+    productDetails: [
+      { productGroupCode: "UPS300C", productDescription: "AED 300 Club Upsell package", packageQuantity: 1 },
+      { productGroupCode: "USS500", productDescription: "AED 500 Upsell package", packageQuantity: 1 }
+    ],
+    adults: 2,
+    children: 0
+  });
+
+  assert.equal(entitlement.breakfastIncluded, true);
+  assert.equal(entitlement.totalBreakfastCovers, 2); // Exactly 2 adults, 0 children
+  assert.equal(entitlement.adultCovers, 2);
+  assert.equal(entitlement.childCovers, 0);
+  assert.equal(entitlement.breakdown.length, 1);
+  assert.equal(entitlement.breakdown[0].productCode, "BFAIN");
+  assert.equal(entitlement.breakdown[0].covers, 2);
+});
+
 test("oracleEntitlement: Flat-Rate Packages (UPSBB1, UPSBB2, UPSBB3, UPSBB4)", () => {
   // UPSBB1: 1 cover per package
   const res1 = calculateReservationEntitlement({
