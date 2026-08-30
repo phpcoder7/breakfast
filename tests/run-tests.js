@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   BREAKFAST_STATUS,
   GUEST_TYPES,
@@ -11,7 +13,16 @@ import {
   uniqueList,
   safeJsonParse
 } from "../js/utils.js";
-import { mergeGuestData } from "../js/mergeData.js";
+import {
+  mergeGuestData,
+  isBreakfastSemantic,
+  reconcilePackageForecast
+} from "../js/mergeData.js";
+import {
+  parseMealPlanXml,
+  parsePackageForecastXml,
+  extractPackageForecastSummary
+} from "../js/xmlParser.js";
 import { searchGuests, exactRoomMatch } from "../js/search.js";
 import { GuestSearchIndex } from "../js/searchIndex.js";
 import { AppStore } from "../js/store.js";
@@ -377,6 +388,291 @@ test("auth: normalizeUsername and role permissions", () => {
   assert.equal(normalizeUsername("  superadmin  "), "SUPERADMIN");
   assert.equal(normalizeUsername("kca"), "KCA");
   assert.equal(normalizeUsername("ktb"), "KTB");
+});
+
+// 6. DYNAMIC ORACLE PACKAGE FORECAST XML PARSER & RECONCILIATION TESTS
+test("oracleParser: Reference XML (pkgforecast_23994069.XML) parses without errors", () => {
+  const xmlPath = path.resolve(process.cwd(), "pkgforecast_23994069.XML");
+  const xmlText = fs.readFileSync(xmlPath, "utf8");
+
+  const forecastRows = parsePackageForecastXml(xmlText);
+  assert.equal(Array.isArray(forecastRows), true);
+  assert.equal(forecastRows.length, 128); // 128 detail entries across 5 product groups
+
+  // Verify dynamic metadata extraction
+  assert.equal(forecastRows.metadata.stayDate, "30-AUG-26");
+  assert.equal(forecastRows.metadata.stayDateChar, "30.08.26");
+  assert.equal(forecastRows.metadata.stayDay, "Sun");
+  assert.equal(forecastRows.metadata.reportId, "81141561");
+  assert.equal(forecastRows.metadata.totalSummaryPackages, 209);
+
+  // Verify dynamic summary totals map
+  assert.deepEqual(forecastRows.summaryTotals, {
+    BFAAD: 2,
+    BFAIN: 186,
+    BFCIN: 17,
+    UPSBB1: 1,
+    WEB_BFSA: 3
+  });
+
+  // Verify hierarchical context & reservation detail fields
+  const firstRow = forecastRows[0];
+  assert.equal(firstRow.roomNumber, "0605");
+  assert.equal(firstRow.firstName, "Zaid");
+  assert.equal(firstRow.lastName, "Alzuhairi");
+  assert.equal(firstRow.productGroupCode, "BFAAD");
+  assert.equal(firstRow.productDescription, "Breakfast Adult Add On Package");
+  assert.equal(firstRow.packageQuantity, 1);
+  assert.equal(firstRow.adults, 1);
+  assert.equal(firstRow.children, 0);
+  assert.equal(firstRow.reservationStatus, "CHECKED IN");
+
+  // Verify 100% dynamic summary vs detail reconciliation
+  const reconciliation = reconcilePackageForecast(forecastRows, forecastRows.summaryTotals);
+  assert.equal(reconciliation.isReconciled, true);
+  assert.equal(reconciliation.totalSummaryPackages, 209);
+  assert.equal(reconciliation.totalDetailPackages, 209);
+  assert.equal(reconciliation.discrepancies.length, 0);
+
+  // Verify merge into guest domain model
+  const mergedGuests = mergeGuestData([], forecastRows);
+  assert.equal(mergedGuests.length > 100, true);
+  const guest605 = mergedGuests.find((g) => g.roomNumber === "0605");
+  assert.notEqual(guest605, undefined);
+  assert.equal(guest605.breakfastIncluded, true);
+  assert.equal(guest605.breakfastStatus, BREAKFAST_STATUS.INCLUDED);
+  assert.equal(guest605.breakfastQuantity >= 1, true);
+});
+
+test("oracleParser: Dynamic Semantic Breakfast Classifier handles novel & localized packages", () => {
+  // Known codes
+  assert.equal(isBreakfastSemantic({ code: "BFAIN" }), true);
+  assert.equal(isBreakfastSemantic({ code: "BB" }), true);
+
+  // Novel package codes with English descriptions
+  assert.equal(isBreakfastSemantic({ code: "VIP_SPEC", description: "VIP Deluxe Champagne Breakfast" }), true);
+  assert.equal(isBreakfastSemantic({ code: "NEW_PKG_99", description: "Executive Morning Buffet Package" }), true);
+  assert.equal(isBreakfastSemantic({ code: "LOUNGE_ACC", description: "Club Floor Lounge Access Included" }), true);
+
+  // Multilingual descriptions
+  assert.equal(isBreakfastSemantic({ code: "FR_BF", description: "Petit déjeuner buffet inclus" }), true);
+  assert.equal(isBreakfastSemantic({ code: "DE_BF", description: "Großes Frühstücksbuffet" }), true);
+  assert.equal(isBreakfastSemantic({ code: "ES_BF", description: "Desayuno buffet caliente" }), true);
+
+  // Heuristic codes
+  assert.equal(isBreakfastSemantic({ code: "BF_SPECIAL" }), true);
+  assert.equal(isBreakfastSemantic({ code: "SUMMER_BKF" }), true);
+  assert.equal(isBreakfastSemantic({ rateCode: "PROMOBB" }), true);
+
+  // Explicit Room Only / No Breakfast
+  assert.equal(isBreakfastSemantic({ code: "RO", description: "Room Only" }), false);
+  assert.equal(isBreakfastSemantic({ code: "EP", description: "European Plan (No Meals)" }), false);
+  assert.equal(isBreakfastSemantic({ code: "ROOM_ONLY", description: "Standard Room Only" }), false);
+
+  // Unknown non-breakfast package
+  assert.equal(isBreakfastSemantic({ code: "SPA_PASS", description: "Hydrotherapy Pool Access" }), false);
+});
+
+test("oracleParser: Synthetic Multi-Scenario A-Q Dynamic Parsing & Fault Tolerance", () => {
+  // Scenario A: Different date & report ID
+  // Scenario B: Arbitrary room numbers (Penthouse-A, Villa-10)
+  // Scenario D & E: Brand new package code (BUFFET_DELUXE)
+  // Scenario H & J: Multi-children reservations
+  // Scenario P: Empty optional fields
+  const syntheticXml = `<?xml version="1.0" encoding="UTF-8"?>
+<PKGFORECAST>
+  <LIST_G_SUMTOTAL_PKGS>
+    <G_SUMTOTAL_PKGS>
+      <LIST_G_STAY_DATE>
+        <G_STAY_DATE>
+          <STAY_DATE>15-SEP-26</STAY_DATE>
+          <STAY_DATE_CHAR>15.09.26</STAY_DATE_CHAR>
+          <STAY_DAY>Tue</STAY_DAY>
+          <LIST_G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>BUFFET_DELUXE</PRODUCT_ID>
+              <LIST_G_REPORT_ID>
+                <G_REPORT_ID>
+                  <REPORT_ID>99887766</REPORT_ID>
+                  <TOTAL_PKGS>7</TOTAL_PKGS>
+                </G_REPORT_ID>
+              </LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>RO_SPECIAL</PRODUCT_ID>
+              <LIST_G_REPORT_ID>
+                <G_REPORT_ID>
+                  <REPORT_ID>99887766</REPORT_ID>
+                  <TOTAL_PKGS>2</TOTAL_PKGS>
+                </G_REPORT_ID>
+              </LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+          </LIST_G_PRODUCT_ID>
+        </G_STAY_DATE>
+      </LIST_G_STAY_DATE>
+    </G_SUMTOTAL_PKGS>
+  </LIST_G_SUMTOTAL_PKGS>
+  <LIST_G_PRODUCT_GROUP>
+    <G_PRODUCT_GROUP>
+      <PRODUCT_ID1>BUFFET_DELUXE</PRODUCT_ID1>
+      <PRODUCT_DESC>Deluxe Chef Breakfast Buffet</PRODUCT_DESC>
+      <LIST_G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>CONF_SYNA_1</CONFIRMATION_NO>
+          <ROOM>Penthouse-A</ROOM>
+          <GUEST_FIRST_NAME>Alexander</GUEST_FIRST_NAME>
+          <GUEST_NAME>Hamilton</GUEST_NAME>
+          <ADULTS>2</ADULTS>
+          <CHILDREN>2</CHILDREN>
+          <PKG_QTY>4</PKG_QTY>
+          <RESV_STATUS>CHECKED IN</RESV_STATUS>
+        </G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>CONF_SYNA_2</CONFIRMATION_NO>
+          <ROOM>Villa-10</ROOM>
+          <DISPLAY_NAME>Wayne, Bruce</DISPLAY_NAME>
+          <ADULTS>3</ADULTS>
+          <CHILDREN>0</CHILDREN>
+          <PKG_QTY>3</PKG_QTY>
+          <RESV_STATUS>DUE IN</RESV_STATUS>
+        </G_RESV_DETAILS>
+      </LIST_G_RESV_DETAILS>
+    </G_PRODUCT_GROUP>
+    <G_PRODUCT_GROUP>
+      <PRODUCT_ID1>RO_SPECIAL</PRODUCT_ID1>
+      <PRODUCT_DESC>Room Only Promotional Special</PRODUCT_DESC>
+      <LIST_G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>CONF_SYNA_3</CONFIRMATION_NO>
+          <ROOM>9901</ROOM>
+          <GUEST_NAME>Kent</GUEST_NAME>
+          <GUEST_FIRST_NAME>Clark</GUEST_FIRST_NAME>
+          <ADULTS>2</ADULTS>
+          <CHILDREN>0</CHILDREN>
+          <PKG_QTY>2</PKG_QTY>
+          <RESV_STATUS>CHECKED IN</RESV_STATUS>
+        </G_RESV_DETAILS>
+      </LIST_G_RESV_DETAILS>
+    </G_PRODUCT_GROUP>
+  </LIST_G_PRODUCT_GROUP>
+</PKGFORECAST>`;
+
+  const parsed = parsePackageForecastXml(syntheticXml);
+  assert.equal(parsed.length, 3);
+  assert.equal(parsed.metadata.stayDate, "15-SEP-26");
+  assert.equal(parsed.metadata.reportId, "99887766");
+  assert.equal(parsed.summaryTotals.BUFFET_DELUXE, 7);
+  assert.equal(parsed.summaryTotals.RO_SPECIAL, 2);
+
+  const recon = reconcilePackageForecast(parsed, parsed.summaryTotals);
+  assert.equal(recon.isReconciled, true);
+  assert.equal(recon.totalSummaryPackages, 9);
+  assert.equal(recon.totalDetailPackages, 9);
+
+  const merged = mergeGuestData([], parsed);
+  assert.equal(merged.length, 3);
+
+  const penthouse = merged.find((g) => g.roomNumber === "Penthouse-A");
+  assert.notEqual(penthouse, undefined);
+  assert.equal(penthouse.fullName, "Alexander Hamilton");
+  assert.equal(penthouse.breakfastIncluded, true);
+  assert.equal(penthouse.breakfastStatus, BREAKFAST_STATUS.INCLUDED);
+  assert.equal(penthouse.breakfastQuantity, 4);
+
+  const villa = merged.find((g) => g.roomNumber === "Villa-10");
+  assert.notEqual(villa, undefined);
+  assert.equal(villa.fullName, "Bruce Wayne");
+  assert.equal(villa.breakfastIncluded, true);
+  assert.equal(villa.breakfastQuantity, 3);
+
+  const roomOnly = merged.find((g) => g.roomNumber === "9901");
+  assert.notEqual(roomOnly, undefined);
+  assert.equal(roomOnly.breakfastIncluded, false);
+  assert.equal(roomOnly.breakfastStatus, BREAKFAST_STATUS.PAYMENT);
+  assert.equal(roomOnly.breakfastQuantity, 0);
+});
+
+test("oracleParser: Multi-package room aggregation and discrepancy tolerance", () => {
+  // Same room across two product groups (e.g. Adult BF + Child BF)
+  const multiPkgXml = `<?xml version="1.0" encoding="UTF-8"?>
+<PKGFORECAST>
+  <LIST_G_SUMTOTAL_PKGS>
+    <G_SUMTOTAL_PKGS>
+      <LIST_G_STAY_DATE>
+        <G_STAY_DATE>
+          <STAY_DATE>01-SEP-26</STAY_DATE>
+          <LIST_G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>ADULT_BF</PRODUCT_ID>
+              <LIST_G_REPORT_ID>
+                <G_REPORT_ID><TOTAL_PKGS>2</TOTAL_PKGS></G_REPORT_ID>
+              </LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+            <G_PRODUCT_ID>
+              <PRODUCT_ID>CHILD_BF</PRODUCT_ID>
+              <LIST_G_REPORT_ID>
+                <G_REPORT_ID><TOTAL_PKGS>2</TOTAL_PKGS></G_REPORT_ID>
+              </LIST_G_REPORT_ID>
+            </G_PRODUCT_ID>
+          </LIST_G_PRODUCT_ID>
+        </G_STAY_DATE>
+      </LIST_G_STAY_DATE>
+    </G_SUMTOTAL_PKGS>
+  </LIST_G_SUMTOTAL_PKGS>
+  <LIST_G_PRODUCT_GROUP>
+    <G_PRODUCT_GROUP>
+      <PRODUCT_ID1>ADULT_BF</PRODUCT_ID1>
+      <PRODUCT_DESC>Breakfast Adult Rate</PRODUCT_DESC>
+      <LIST_G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>CONF_MULTI_1</CONFIRMATION_NO>
+          <ROOM>0501</ROOM>
+          <GUEST_NAME>Smith</GUEST_NAME>
+          <GUEST_FIRST_NAME>John</GUEST_FIRST_NAME>
+          <ADULTS>2</ADULTS>
+          <CHILDREN>2</CHILDREN>
+          <PKG_QTY>2</PKG_QTY>
+        </G_RESV_DETAILS>
+      </LIST_G_RESV_DETAILS>
+    </G_PRODUCT_GROUP>
+    <G_PRODUCT_GROUP>
+      <PRODUCT_ID1>CHILD_BF</PRODUCT_ID1>
+      <PRODUCT_DESC>Breakfast Child Rate</PRODUCT_DESC>
+      <LIST_G_RESV_DETAILS>
+        <G_RESV_DETAILS>
+          <CONFIRMATION_NO>CONF_MULTI_1</CONFIRMATION_NO>
+          <ROOM>0501</ROOM>
+          <GUEST_NAME>Smith</GUEST_NAME>
+          <GUEST_FIRST_NAME>John</GUEST_FIRST_NAME>
+          <ADULTS>2</ADULTS>
+          <CHILDREN>2</CHILDREN>
+          <PKG_QTY>2</PKG_QTY>
+        </G_RESV_DETAILS>
+      </LIST_G_RESV_DETAILS>
+    </G_PRODUCT_GROUP>
+  </LIST_G_PRODUCT_GROUP>
+</PKGFORECAST>`;
+
+  const parsedMulti = parsePackageForecastXml(multiPkgXml);
+  assert.equal(parsedMulti.length, 2);
+
+  const mergedMulti = mergeGuestData([], parsedMulti);
+  assert.equal(mergedMulti.length, 1);
+  const smith = mergedMulti[0];
+  assert.equal(smith.roomNumber, "0501");
+  assert.equal(smith.breakfastQuantity, 4); // 2 adult + 2 child = 4 breakfast entitlements
+  assert.equal(smith.breakfastIncluded, true);
+  assert.deepEqual(smith.products.sort(), ["ADULT_BF", "CHILD_BF"].sort());
+
+  // Test discrepancy handling: summary expects 5 but details have 2
+  const mismatchedSummary = { ADULT_BF: 5, CHILD_BF: 2 };
+  const reconMismatched = reconcilePackageForecast(parsedMulti, mismatchedSummary);
+  assert.equal(reconMismatched.isReconciled, false);
+  assert.equal(reconMismatched.discrepancies.length, 1);
+  assert.equal(reconMismatched.discrepancies[0].productCode, "ADULT_BF");
+  assert.equal(reconMismatched.discrepancies[0].summaryCount, 5);
+  assert.equal(reconMismatched.discrepancies[0].detailCount, 2);
+  assert.equal(reconMismatched.discrepancies[0].difference, -3);
 });
 
 async function runAllTests() {

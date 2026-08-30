@@ -21,16 +21,189 @@ const MEAL_HEADING_MATCHERS = {
   mealPlan: ["meal plan"]
 };
 
-function parseXml(xmlText) {
-  const parser = new DOMParser();
-  const xmlDocument = parser.parseFromString(xmlText, "application/xml");
-  const parseError = xmlDocument.querySelector("parsererror");
-
-  if (parseError) {
-    throw new Error("Unable to read file. Please export a fresh report from OPERA.");
+// Lightweight, zero-dependency XML DOM implementation for Node.js / non-browser environments
+class FallbackElement {
+  constructor(tagName, localName) {
+    this.nodeType = 1;
+    this.tagName = tagName;
+    this.localName = localName;
+    this.attributes = new Map();
+    this.children = [];
+    this.childNodes = [];
+    this.parentNode = null;
   }
 
-  return xmlDocument;
+  get textContent() {
+    return this.childNodes
+      .map((c) => (typeof c === "string" ? c : c?.textContent || ""))
+      .join("");
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) || null;
+  }
+
+  getAttributeNS(ns, localName) {
+    for (const [key, value] of this.attributes.entries()) {
+      if (key === localName || key.endsWith(`:${localName}`)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  getElementsByTagName(name) {
+    const results = [];
+    const searchName = name.toLowerCase();
+    const walk = (el) => {
+      for (const child of el.children) {
+        if (name === "*" || child.tagName.toLowerCase() === searchName || child.localName.toLowerCase() === searchName) {
+          results.push(child);
+        }
+        walk(child);
+      }
+    };
+    walk(this);
+    return results;
+  }
+
+  getElementsByTagNameNS(ns, localName) {
+    const results = [];
+    const searchLocal = localName.toLowerCase();
+    const walk = (el) => {
+      for (const child of el.children) {
+        if (localName === "*" || child.localName.toLowerCase() === searchLocal) {
+          results.push(child);
+        }
+        walk(child);
+      }
+    };
+    walk(this);
+    return results;
+  }
+
+  querySelector(selector) {
+    return null;
+  }
+}
+
+class FallbackDocument {
+  constructor(root) {
+    this.documentElement = root;
+  }
+
+  getElementsByTagName(name) {
+    if (!this.documentElement) return [];
+    const lower = name.toLowerCase();
+    const sub = this.documentElement.getElementsByTagName(name);
+    if (name === "*" || this.documentElement.tagName.toLowerCase() === lower || this.documentElement.localName.toLowerCase() === lower) {
+      return [this.documentElement, ...sub];
+    }
+    return sub;
+  }
+
+  getElementsByTagNameNS(ns, localName) {
+    if (!this.documentElement) return [];
+    const lower = localName.toLowerCase();
+    const sub = this.documentElement.getElementsByTagNameNS(ns, localName);
+    if (localName === "*" || this.documentElement.localName.toLowerCase() === lower) {
+      return [this.documentElement, ...sub];
+    }
+    return sub;
+  }
+
+  querySelector(selector) {
+    return null;
+  }
+}
+
+function parseXmlFallback(xmlText) {
+  const tagRegex = /<(!\[CDATA\[[\s\S]*?\]\]>|!--[\s\S]*?--|\?[\s\S]*?\?|\/?[a-zA-Z0-9_:\.-]+(?:\s+[^>]*)?\/?)>|([^<]+)/g;
+  let root = null;
+  let current = null;
+  const stack = [];
+  let match;
+
+  while ((match = tagRegex.exec(xmlText)) !== null) {
+    if (match[2]) {
+      const text = match[2];
+      if (current && text) {
+        current.childNodes.push(text);
+      }
+      continue;
+    }
+
+    const tagContent = match[1];
+    if (!tagContent || tagContent.startsWith("?xml") || tagContent.startsWith("!--")) {
+      continue;
+    }
+
+    if (tagContent.startsWith("![CDATA[")) {
+      const cdata = tagContent.slice(8, -2);
+      if (current) {
+        current.childNodes.push(cdata);
+      }
+      continue;
+    }
+
+    if (tagContent.startsWith("/")) {
+      stack.pop();
+      current = stack.length > 0 ? stack[stack.length - 1] : null;
+      continue;
+    }
+
+    const isSelfClosing = tagContent.endsWith("/");
+    const cleanTag = isSelfClosing ? tagContent.slice(0, -1).trim() : tagContent.trim();
+    const spaceIdx = cleanTag.search(/\s/);
+    const rawTagName = spaceIdx === -1 ? cleanTag : cleanTag.slice(0, spaceIdx);
+    const attrString = spaceIdx === -1 ? "" : cleanTag.slice(spaceIdx);
+
+    const colonIdx = rawTagName.indexOf(":");
+    const localName = colonIdx === -1 ? rawTagName : rawTagName.slice(colonIdx + 1);
+
+    const element = new FallbackElement(rawTagName, localName);
+
+    if (attrString) {
+      const attrRegex = /([a-zA-Z0-9_:\.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+      let attrMatch;
+      while ((attrMatch = attrRegex.exec(attrString)) !== null) {
+        element.attributes.set(attrMatch[1], attrMatch[2] !== undefined ? attrMatch[2] : attrMatch[3]);
+      }
+    }
+
+    if (!root) {
+      root = element;
+    }
+    if (current) {
+      current.children.push(element);
+      current.childNodes.push(element);
+      element.parentNode = current;
+    }
+
+    if (!isSelfClosing) {
+      stack.push(element);
+      current = element;
+    }
+  }
+
+  return new FallbackDocument(root);
+}
+
+function parseXml(xmlText) {
+  if (typeof DOMParser !== "undefined") {
+    const parser = new DOMParser();
+    const xmlDocument = parser.parseFromString(xmlText, "application/xml");
+    const parseError = xmlDocument.querySelector("parsererror");
+
+    if (parseError) {
+      throw new Error("Unable to read file. Please export a fresh report from OPERA.");
+    }
+
+    return xmlDocument;
+  }
+
+  // Node.js fallback
+  return parseXmlFallback(xmlText);
 }
 
 function getRootName(xmlDocument) {
@@ -87,6 +260,7 @@ function mapMealColumns(xmlDocument) {
 }
 
 function getChildText(parent, tagName) {
+  if (!parent || !parent.children) return "";
   const node = Array.from(parent.children).find((child) => child.tagName === tagName || child.localName === tagName);
   return normalizeText(node?.textContent);
 }
@@ -146,40 +320,131 @@ export function parseMealPlanXml(xmlText) {
   });
 }
 
+/**
+ * Extracts summary totals and report metadata from Oracle PKGFORECAST XML
+ * @param {Document|FallbackDocument} xmlDocument
+ * @returns {{ stayDate: string, stayDateChar: string, stayDay: string, reportId: string, summaryTotals: Record<string, number>, totalSummaryPackages: number }}
+ */
+export function extractPackageForecastSummary(xmlDocument) {
+  let stayDate = "";
+  let stayDateChar = "";
+  let stayDay = "";
+  let reportId = "";
+  const summaryTotals = {};
+  let totalSummaryPackages = 0;
+
+  const stayDateNodes = Array.from(xmlDocument.getElementsByTagName("G_STAY_DATE"));
+  for (const stayNode of stayDateNodes) {
+    stayDate = stayDate || getChildText(stayNode, "STAY_DATE");
+    stayDateChar = stayDateChar || getChildText(stayNode, "STAY_DATE_CHAR");
+    stayDay = stayDay || getChildText(stayNode, "STAY_DAY");
+
+    const productNodes = Array.from(stayNode.getElementsByTagName("G_PRODUCT_ID"));
+    for (const prodNode of productNodes) {
+      const prodCode = normalizeCode(getChildText(prodNode, "PRODUCT_ID"));
+      if (!prodCode) continue;
+
+      let productTotal = 0;
+      const reportNodes = Array.from(prodNode.getElementsByTagName("G_REPORT_ID"));
+      for (const repNode of reportNodes) {
+        reportId = reportId || getChildText(repNode, "REPORT_ID");
+        const totalPkgsStr = getChildText(repNode, "TOTAL_PKGS");
+        const count = parseInteger(totalPkgsStr, 0);
+        productTotal += count;
+      }
+
+      summaryTotals[prodCode] = (summaryTotals[prodCode] || 0) + productTotal;
+      totalSummaryPackages += productTotal;
+    }
+  }
+
+  return {
+    stayDate,
+    stayDateChar,
+    stayDay,
+    reportId,
+    summaryTotals,
+    totalSummaryPackages
+  };
+}
+
+/**
+ * Parses Oracle PKGFORECAST XML with dynamic package identification,
+ * hierarchical context preservation, and data-driven summary extraction.
+ * @param {string} xmlText
+ * @returns {Array<object>}
+ */
 export function parsePackageForecastXml(xmlText) {
   const xmlDocument = parseXml(xmlText);
   requireFileType(xmlDocument, "PKGFORECAST");
 
+  // 1. Dynamic Summary Section Extraction
+  const summary = extractPackageForecastSummary(xmlDocument);
+
+  // 2. Dynamic Reservation Details Extraction
   const reservationNodes = Array.from(xmlDocument.getElementsByTagName("G_RESV_DETAILS"));
   if (!reservationNodes.length) {
     throw new Error("Unable to read file. Please export a fresh report from OPERA.");
   }
 
-  return reservationNodes.map((reservationNode) => {
+  const rows = reservationNodes.map((reservationNode) => {
     const productGroup = findAncestorByTagName(reservationNode, "G_PRODUCT_GROUP");
     const productGroupCode = normalizeCode(getChildText(productGroup, "PRODUCT_ID1"));
     const productDescription = getChildText(productGroup, "PRODUCT_DESC");
     const displayName = getChildText(reservationNode, "DISPLAY_NAME");
     const fallbackLastName = getChildText(reservationNode, "GUEST_NAME");
-    const firstName = getChildText(reservationNode, "GUEST_FIRST_NAME");
-    const lastName = displayName.includes(",") ? displayName.split(",")[0].trim() : fallbackLastName;
+    const rawFirstName = getChildText(reservationNode, "GUEST_FIRST_NAME");
+    const firstName = rawFirstName || (displayName.includes(",") ? displayName.split(",")[1].trim() : "");
+    const lastName = displayName.includes(",") ? displayName.split(",")[0].trim() : (fallbackLastName || displayName);
+
+    const rawPkgQty = getChildText(reservationNode, "PKG_QTY") || getChildText(reservationNode, "QUANTITY") || getChildText(reservationNode, "TOTAL_PKGS1");
+    const packageQuantity = parseInteger(rawPkgQty, 1);
+    const quantity = parseInteger(getChildText(reservationNode, "QUANTITY"), packageQuantity);
+    const persons = parseInteger(getChildText(reservationNode, "PERSONS"), 0);
+    const adults = parseInteger(getChildText(reservationNode, "ADULTS"), 0);
+    const children = parseInteger(getChildText(reservationNode, "CHILDREN"), 0);
 
     return {
       confirmationNumber: normalizeText(getChildText(reservationNode, "CONFIRMATION_NO")),
+      resvNameId: normalizeText(getChildText(reservationNode, "RESV_NAME_ID")),
+      guestNameId: normalizeText(getChildText(reservationNode, "GUEST_NAME_ID")),
       roomNumber: normalizeRoom(getChildText(reservationNode, "ROOM")),
+      roomCategory: getChildText(reservationNode, "ROOM_CATEGORY_LABEL") || getChildText(reservationNode, "ROOM_CATEGORY"),
+      roomClass: getChildText(reservationNode, "ROOM_CLASS"),
       firstName,
       lastName,
+      displayName,
       products: splitProducts(getChildText(reservationNode, "PRODUCTS")),
       productGroupCode,
       productDescription,
-      packageQuantity: parseInteger(getChildText(reservationNode, "PKG_QTY") || getChildText(reservationNode, "QUANTITY")),
-      adults: parseInteger(getChildText(reservationNode, "ADULTS")),
-      children: parseInteger(getChildText(reservationNode, "CHILDREN")),
-      reservationStatus: getChildText(reservationNode, "COMPUTED_RESV_STATUS") || getChildText(reservationNode, "RESV_STATUS"),
+      packageQuantity,
+      quantity,
+      persons,
+      calculationRule: getChildText(reservationNode, "CALCULATION_RULE"),
+      adults,
+      children,
+      reservationStatus: getChildText(reservationNode, "COMPUTED_RESV_STATUS") || getChildText(reservationNode, "RESV_STATUS") || getChildText(reservationNode, "RES_STATUS") || "CHECKED IN",
+      resStatus: getChildText(reservationNode, "RES_STATUS"),
       arrival: getChildText(reservationNode, "TRUNC_ARRIVAL"),
       departure: getChildText(reservationNode, "TRUNC_DEPARTURE"),
       rateCode: getChildText(reservationNode, "RATE_CODE"),
+      stayDate: getChildText(reservationNode, "STAY_DATE1") || summary.stayDate,
+      reportId: getChildText(reservationNode, "REPORT_ID1") || summary.reportId,
       source: "packageForecast"
     };
   });
+
+  // Attach metadata and summary totals to the result array for zero-overhead access
+  Object.assign(rows, {
+    summaryTotals: summary.summaryTotals,
+    metadata: {
+      stayDate: summary.stayDate,
+      stayDateChar: summary.stayDateChar,
+      stayDay: summary.stayDay,
+      reportId: summary.reportId,
+      totalSummaryPackages: summary.totalSummaryPackages
+    }
+  });
+
+  return rows;
 }
